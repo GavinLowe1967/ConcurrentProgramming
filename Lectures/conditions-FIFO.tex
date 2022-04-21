@@ -1,0 +1,95 @@
+
+\begin{slide}
+\heading{Example: a monitor to enforce mutual exclusion}
+
+Often client processes need to access a shared resource under \emph{mutual
+  exclusion}: only one client may use the resource at a time.  We will
+implement a monitor to enforce mutual exclusion, but also to allow clients
+to access the resource in first-come-first-served order.  
+
+When a client wishes to access the resource it calls a \SCALA{Request}
+procedure (known as the \emph{entry protocol}), passing in its identity; this
+will block until this client is allowed access.  After using the resource, the
+client calls a \SCALA{Release} procedure (known as the \emph{exit protocol}).
+So the code for a client will look like
+%
+\begin{scala}
+...
+Monitor.Request(me) // entry protocol
+...                  // use resource
+Monitor.Release     // exit protocol
+...
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{First attempt}
+
+The following version enforces mutual exclusion, but not FIFO behaviour.
+%
+\begin{scala}
+object Monitor{
+  private var busy = false // Is the resource in use?
+
+  def Request(id: ProcId) = synchronized{
+    while(busy) wait() // wait turn
+    busy = true
+  }
+
+  def Release = synchronized{
+      busy = false
+      notify()
+  }
+}
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Enforcing FIFO}
+
+We use a queue to store the identities of waiting processes:
+%
+\begin{scala}
+val queue = new scala.collection.mutable.Queue[ProcId];
+\end{scala}
+
+If a process cannot access the resource immediately, its identity is put on
+the queue and it waits.  When it is woken up, it checks whether it has got to
+the front of the queue.
+%
+\begin{scala}
+def Request(id: ProcId) = synchronized{
+  if(busy || !queue.isEmpty){
+    queue.enqueue(id);
+    while(busy || queue.first!=id) wait(); // wait turn
+    val first = queue.dequeue;
+    assert(first==id);
+  }
+  busy = true;
+}
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Enforcing FIFO}
+
+The \SCALA{Release} method is as before.
+
+If processes do not have identities, the monitor can give each process a
+unique sequence number to act as its identity:
+%
+\begin{scala}
+private var next = 0; // next sequence number to use
+
+def Request = synchronized{
+  val id = next; next += 1;
+  ... // as before
+}
+\end{scala}
+\end{slide}

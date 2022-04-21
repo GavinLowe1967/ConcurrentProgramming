@@ -1,0 +1,117 @@
+\begin{slide}
+\heading{A synchronous channel}
+
+We will implement a synchronous channel, for use by an arbitrary number of
+senders and receivers.  
+
+We will require three signals between threads:
+%
+\begin{itemize}
+\item Each sender will signal to a receiver that it has deposited a value,
+  which the receiver can take;
+
+\item The receiver will then signal back to the sender that it can continue;
+  this makes the channel synchronous;
+
+\item The receiver will signal to a sender for the next round that it has
+  cleared the value, so that sender can deposit its value.
+\end{itemize}
+%
+We will use a separate condition for each signal. 
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{A synchronous channel}
+
+\begin{scala}
+class SharedSyncChan[A]{
+  /** The current or previous value. */
+  private var value = null.asInstanceOf[A]
+
+  /** Is the current value of value valid, i.e. ready to be received? */
+  private var full = false
+  ...
+}
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{A synchronous channel}
+
+\begin{scala}
+  /** Lock for controlling synchronisations. */
+  private val lock = new Lock
+
+  /** Condition for signalling to receiver that a value has been 
+    * deposited. */
+  private val slotFull = lock.newCondition
+
+  /** Condition for signalling to current sender that it can continue. */
+  private val continue = lock.newCondition
+
+  /** Condition for signalling to the next sender that the previous value 
+    * has been read. */
+  private val slotEmptied = lock.newCondition
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{A synchronous channel}
+
+\begin{scala}
+  def send(x: A) = lock.mutex{
+    slotEmptied.await(!full)  // wait for previous value to be consumed (1)
+    value = x; full = true   // deposit my value
+    slotFull.signal()         // signal to receiver at (2)
+    continue.await()          // wait for receiver (3)
+  }
+
+  def receive: A = lock.mutex{
+    slotFull.await(full)     // wait for sender (2)
+    continue.signal()        // signal to current sender at (3) 
+    full = false             // clear value
+    slotEmptied.signal()     // signal to next sender at (1)
+    value
+  }
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{A synchronous channel}
+
+Note that is necessary for the sender to recheck |full| when it receives a
+signal on |slotEmptied|, in case another sender has run in the meantime and
+filled the slot.
+
+Likewise with the receiver on |slotFull|.
+
+However, there is no need for the sender to perform a similar check on
+receiving a signal on |continue|, because it cannot be preempted by another
+sender. 
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Testing}
+
+We can test this implementation by running some threads that perform sends and
+receives, and have them logging the call and return of each operation.  For
+simplicity, we arrange that every send is of a different value.  This makes it
+easy to identify matching sends and receives (if they exist).  We then check
+that the two invocations overlap.
+
+It is sound to assume the values sent are all different, because the
+implementation is \emph{data independent} in the type |A| of data: values of
+this type are stored, read, and returned, but no operation (e.g.~|==|) is
+done on them.  This means that for any erroneous history, there would be a
+corresponding erroneous history using distinct values.
+\end{slide}

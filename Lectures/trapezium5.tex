@@ -1,0 +1,307 @@
+
+\begin{slide}
+\heading{Encapsulation}
+
+In the previous code, the design decisions concerning the use of
+message-passing concurrency was interleaved with the computation.  If
+we decided to implement the concurrency in a different way ---for
+example, to use one of the techniques we'll see later in the course---
+we would have to make changes in several places.  This is a very small
+program, so it doesn't matter too much here; but it would be an issue
+in bigger programs.
+
+It would be better to encapsulate each relevant design decision within a
+single object, so that changes will involve just that object.  Each such
+object will be designed to allow concurrent calls of its methods, and to avoid
+race conditions.  In particular, reasoning about correctness will (mostly)
+involve reasoning about a single object at a time. 
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Encapsulation}
+
+We will define concurrent objects with the following interfaces.
+%
+\begin{scala}
+  /** The bag of tasks object. */
+  private class BagOfTasks{
+    /** Get a task.  
+      * @throws Stopped exception if there are no more tasks. */
+    def getTask: Task = ...
+  }  
+
+  /** A collector object that receives sub-results from the workers, and adds
+    * them up. */
+  private class Collector{
+    /** Add x to the result. */
+    def add(x: Double) = ...
+
+    /** Get the result, once the computation has finished. */
+    def get: Double = ...
+  }
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Encapsulation}
+
+Then we can define the worker as follows. 
+%
+\begin{scala}
+  private def worker(bag: BagOfTasks, collector: Collector) = thread{
+    repeat{
+      val (left, right, taskSize, delta) = bag.getTask
+      val result = integral(left, right, taskSize, delta)
+      collector.add(result)
+    }
+  }
+\end{scala}
+%
+Note that this is independent of how the |BagOfTasks| and |Collector| are
+implemented. 
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Encapsulating the bag of tasks}
+
+\begin{scala}
+  /** The bag of tasks object. */
+  private class BagOfTasks(buffering: Int){
+    /** Channel from the controller to the workers, to distribute tasks. */
+    private val toWorkers = 
+      if(buffering > 0) new BuffChan[Task](buffering) else new SyncChan[Task]
+
+    /** Get a task.  
+      * @throws Stopped exception if there are no more tasks. */
+    def getTask: Task = toWorkers?()
+    ...
+  }
+\end{scala}
+\end{slide}  
+
+%%%%%
+
+\begin{slide}
+\heading{Encapsulating the bag of tasks}
+
+\begin{scala}
+  private class BagOfTasks{
+    ...
+    /** A server process, that distributes tasks. */
+    private def server = thread{
+      require(n%nTasks == 0); val delta = (b-a)/n; val taskSize = n/nTasks
+      val taskRange = (b-a)/nTasks; var left = a                  
+      for(i <- 0 until nTasks){
+        val right = left+taskRange
+        toWorkers!(left, right, taskSize, delta)
+        left = right
+      }
+      toWorkers.close
+    }
+
+    // Start the server running
+    fork(server)
+  }
+\end{scala}
+\end{slide}  
+
+%%%%%
+
+\begin{slide}
+\heading{\scalashape fork}
+
+If |t| is a |ThreadGroup|, then |fork(t)| or |t.fork| starts a new thread
+running which executes~|t|.
+
+Note that this is in parallel to the current thread.  On the previous slide,
+the construction of the |BagOfTasks| returns after the |fork(server)|, but
+leaves a thread running the |server| code. 
+\end{slide}
+
+%%%%%
+
+
+\begin{slide}
+\heading{Encapsulating the collector}
+
+\begin{scala}
+  /** A collector object that receives sub-results from the workers, and adds
+    * them up. */
+  private class Collector(buffering: Int){
+    /** Channel from the workers to the controller, to return sub-results. */
+    private val toController = 
+      if(buffering > 0) new BuffChan[Double](buffering) else new SyncChan[Double]
+
+    /** Channel that sends the final result. */
+    private val resultChan = new SyncChan[Double]
+
+    /** Add x to the result. */
+    def add(x: Double) = toController!x
+
+    /** Get the result. */
+    def get: Double = resultChan?()
+    ...
+  }
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Encapsulating the collector}
+
+\begin{scala}
+  private class Collector{
+    ...
+    /** A collector, that accumulates the sub-results. */
+    private def server = thread{
+      var result = 0.0
+      for(i <- 0 until nTasks) result += (toController?())
+      resultChan!result
+    }
+
+    // Start the server running
+    fork(server)
+  }
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{The main function}
+
+\begin{scala}
+  /** Calculate the integral. */
+  def apply: Double = {
+    val bag = new BagOfTasks(buffering); val collector = new Collector(buffering)
+    val workers = || (for (i <- 0 until nWorkers) yield worker(bag, collector))
+    run(workers)
+    collector.get
+  }
+\end{scala}
+\end{slide}  
+
+%%%%%
+
+\begin{slide}
+\heading{An incorrect design}
+
+A previous design stored the result in an object variable, and arranged for
+|get| to return that variable.
+%
+\begin{scala}
+  private class Collector{
+    private var result = 0.0 // Holds final result
+
+    /** A collector, that accumulates the sub-results into result. */
+    private def server = thread{
+      for(i <- 0 until nTasks) result += (toController?())
+    }
+
+    /** Get the result.  Pre: the computation has finished. */
+    def get: Double = result
+  }
+\end{scala}
+%
+This can go wrong: the |run(workers)| in the |apply| function can terminate
+while the |server| is still processing the final sub-result; thus the value
+returned by |apply| can be missing this final sub-result.
+% Why is this incorrect?
+    %% private var done = false // Set to true when computation finished
+    %%   done = true{ require(done); result }
+\end{slide}
+
+%%%%%
+
+\begin{selfnote}
+The main function calls |collector.get| after the workers have finished; but
+the server inside the collector might not have finished.
+
+Also, there's a potential cache consistency problem.  The collector might have
+updated |result| only in its cache, and this might not yet have been written
+back to main memory.
+
+Note how using an explicit assertion detects the first point, and probably
+catches the second point, making it easier to detect and correct the error.
+\end{selfnote}
+
+
+
+% %%%%%
+
+% \begin{selfnote}
+% More tasks gives better load balancing, but also gives extra overhead from the
+% extra communications.
+
+% In a distributed system, the communication overhead becomes more significant.
+% \end{selfnote}
+
+%%%%%
+
+\begin{slide}
+\heading{Bag of tasks with replacement}
+
+A variant on the bag of tasks pattern allows new tasks to be placed back into
+the bag. 
+
+\emph{Adaptive quadrature} is an alternative approach that proceeds as
+follows.  In order to calculate the integral $\int_a^b f(x) \mbox{d}x$,
+compute the midpoint $mid = (a+b)/2$ and estimate three integrals, from $a$ to
+$mid$, from $mid$ to~$b$, and from $a$ to~$b$, each using the trapezium rule
+with a single interval.  If the sum of the former two estimates is within some
+value $\epsilon$ of the third, then we take that third estimate as being the
+result.  Otherwise, recursively estimate the integrals over the two
+sub-intervals $a$ to~$mid$ and $mid$ to~$b$, and sum the results.
+
+The latter case can be implemented by returning the two sub-intervals $(a,
+mid)$ and $(mid, b)$ to the bag.
+
+Exercise: implement this.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Summary}
+
+\begin{itemize}
+%\item
+%% Data parallel;
+
+%% \item
+%% Workers and controllers;
+
+%% %% \item
+%% %% Closing channels;
+
+%% \item
+%% Testing against a sequential implementation;
+
+%% \item
+%% Choosing the number of processes;
+
+%% \item
+%% Experimental design;
+
+\item
+Bag of tasks;
+
+\item
+Choosing the size of tasks;
+
+\item
+Communication is expensive: avoid having too many communications;
+
+\item
+Encapsulation;
+
+\item Bag of tasks with replacement.
+\end{itemize}
+\end{slide}

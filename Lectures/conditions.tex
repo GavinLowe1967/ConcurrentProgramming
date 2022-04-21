@@ -1,0 +1,60 @@
+\documentclass[notes,color]{sepslide0}
+\usepackage{graphicx}
+\usepackage[overheads]{mysepslides}
+\usepackage{tech,graphicx,url,csp-cm,tikz,scalalistings}
+
+\title{Conditions and Targeted Signals} 
+\author{Gavin Lowe}
+
+% \everymath{\color{Plum}}
+\def\smaller{\small} 
+\def\scalacolour{\color{violet}}
+
+\begin{document}
+
+\begin{slide}
+  
+  \Title
+
+\end{slide}
+
+\input{conditions1}
+\input{conditionsChan} % many-many channel
+% The following example should be adapted to use Monitors/QueueM.  However,
+% the example makes more sense using semaphores, s0 let's leave it out. 
+%\input{conditions-FIFO}
+\input{conditions-barber}
+
+%%%%%
+
+\begin{slide}
+\heading{Other languages}
+
+Most other languages provide a mechanism similar to conditions.  For example
+%
+\begin{itemize}
+\item Implementations of the Java interface
+  |java.util.concurrent.locks.Condition|;
+
+\item C++ |condition_variable|s.
+\end{itemize}
+%
+Note that both of the above may suffer from spurious wake-ups.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Summary}
+
+\begin{itemize}
+\item Conditions and targeted signals;
+
+\item Examples;
+
+\item Dealing with synchronisation problems.
+\end{itemize}
+\end{slide}
+
+
+\end{document}

@@ -1,0 +1,282 @@
+\begin{slide}
+\heading{Example: graph search}
+
+Many Computer Science applications involve searching in a graph (whether
+explicitly or implicitly).  Examples:
+%
+\begin{itemize}
+\item Route planning;
+
+\item Planning;
+
+\item Puzzle solving;
+
+\item Verification.
+\end{itemize}
+%
+Searches might aim to minimise some cost, or might aim to find a node with a
+particular property, using breadth-first search or depth-first search.
+
+We will examine an algorithm for (approximate) concurrent breadth-first search.
+
+The third practical asks you to implement (approximate) concurrent depth-first search.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Graphs and graph search}
+
+For our purposes, a graph can be defined by a function that gives all the
+successors (or neighbours) of a given node.
+%
+\begin{scala}
+/** A trait representing an unlabelled graph with nodes of type N. */
+trait Graph[N]{
+  /** The successors of node n.  All nodes n' such that there is an edge
+    * from n to n' */
+  def succs(n: N): List[N]
+}
+\end{scala}
+
+We will search from some start node to try to find a path to a node with a
+particular property |isTarget|.
+\begin{scala}
+/** Trait representing a graph search problem in graph g. */
+abstract class GraphSearch[N](g: Graph[N]){
+  /** Try to find a path in g from start to a node that satisfies isTarget. */
+  def apply(start: N, isTarget: N => Boolean): Option[List[N]]
+}
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Example}
+
+\def\word#1{\emph{#1}}
+A popular word game, invented by Lewis Carroll, is to find a path of words,
+each differing from the previous in a single letter, linking two given words.
+Carroll used the example of finding such a path linking \word{grass} to
+\word{green}, and gave the solution \word{grass}, \word{crass}, \word{cress},
+\word{tress}, \word{trees}, \word{frees}, \word{freed}, \word{greed},
+\word{green}, although in fact there are shorter solutions.
+
+The course website contains a solution to this problem.  A |Graph| is built,
+with words (from some dictionary file) as nodes, and with the successors of a
+node being those that differ by one letter.  The |GraphSearch| then solves the
+problem.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Sequential breadth-first graph search}
+
+We will search the graph in breadth-first order.  We will use a queue to store
+nodes that still need to be expanded: this provides the breadth-first
+behaviour.  Each node will be paired with the path that reached it, to allow a
+successful path to be reproduced.
+
+In addition, we will keep track of the set of nodes seen previously, to avoid
+repeating work.
+\begin{scala}
+/** Sequential graph search implementation. */
+class SeqGraphSearch[N](g: Graph[N]) extends GraphSearch[N](g){
+  def apply(start: N, isTarget: N => Boolean): Option[List[N]] = {
+    // Queue storing nodes and the path leading to that node
+    val queue = new scala.collection.mutable.Queue[(N, List[N])]()
+    queue += ((start, List(start)))
+    // All nodes seen so far.
+    val seen = scala.collection.mutable.Set[N](start)
+    ...
+} }
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Sequential breadth-first graph search}
+
+We repeatedly remove a node from the queue, and consider each of its
+successors.  If a successor node is a target, we are done.  Otherwise, if the
+successor node hasn't been seen previously, we add it to the queue.
+%
+\begin{scala}
+  def apply(start: N, isTarget: N => Boolean): Option[List[N]] = {
+    ...
+    while(queue.nonEmpty){
+      val (n, path) = queue.dequeue
+      for(n1 <- g.succs(n)){
+        if(isTarget(n1)) return Some(path :+ n1)
+        else if(seen.add(n1)) queue.enqueue((n1, path :+ n1))
+      }
+    }
+    None
+  }
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Towards a concurrent algorithm}
+
+We will implement a concurrent algorithm where each worker thread will execute
+very much as in the main loop of the sequential algorithm.
+
+The workers will share a concurrent queue.  We will use a
+|TerminatingPartialQueue|. 
+
+The workers will also share a concurrent set, with the following interface.
+Exercise: implement such a set.
+%
+\begin{scala}
+class ConcSet[A]{
+  /** Add x to this set.  Return true if x was not previously in the set. */
+  def add(x: A): Boolean
+}
+\end{scala}
+
+We also assume that the |succs| method on the |Graph| object is thread-safe.
+In most cases, this method will just perform reads, so there will be no race
+conditions. 
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Towards a concurrent algorithm}
+
+\begin{scala}
+/** A class to search Graph g concurrently. */
+class ConcGraphSearch[N](g: Graph[N]) extends GraphSearch[N](g){
+  /**The number of workers. */
+  val numWorkers = 8
+
+  /** Try to find a path in g from start to a node that satisfies isTarget. */
+  def apply(start: N, isTarget: N => Boolean): Option[List[N]] = {
+    // Queue storing nodes and the path leading to that node
+    val queue = new TerminatingPartialQueue[(N, List[N])](numWorkers)
+    queue.enqueue((start, List(start)))
+    // All nodes seen so far.
+    val seen = new ConcSet[N]; seen.add(start)
+    ...
+  }
+}
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Termination}
+
+There are a few complications concerning termination.
+%
+\begin{itemize}
+\item If a path is found, we need to arrange for that path to be returned.  If
+two threads each find a path, we need to return just one of them.  We need to
+ensure the other threads terminate, and the queue is shut down.
+
+We will use a |coordinator| thread to help with this.  If a thread finds a
+path, it will send it to the |coordinator|.
+
+\item If no path exists, we will get to a state where the queue is empty and
+all threads are trying to dequeue a node; the |TerminatingPartialQueue| will
+help us to terminate.
+\end{itemize}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{A worker}
+
+\begin{scala}
+    // Channel on which a worker tells the coordinator that it has found a
+    // solution.
+    val pathFound = ManyOne[List[N]]
+
+    // A single worker
+    def worker = thread("worker"){
+      repeat{
+        val (n, path) = queue.dequeue
+        for(n1 <- g.succs(n)){
+          if(isTarget(n1)) pathFound!(path :+ n1) // done!
+          else if(seen.add(n1)) queue.enqueue((n1, path :+ n1))
+        }
+      }
+      pathFound.close // causes coordinator to close down
+    }
+\end{scala}
+\end{slide}
+
+%%%%%
+
+{\advance\slideheight by 3mm
+\begin{slide}
+\heading{The coordinator}
+
+\begin{scala}
+    // Variable that ends up holding the result; written by coordinator. 
+    var result: Option[List[N]] = None
+
+    def coordinator = thread("coordinator"){
+      attempt{ result = Some(pathFound?()) }{ }
+      queue.shutdown // close queue; this will cause most workers to terminate
+      pathFound.close // in case another worker has found solution
+    }
+\end{scala}
+
+If a thread finds a path, it sends it to the coordinator.  The coordinator
+shuts down the queue and closes |pathFound|.  Any operation on the queue will
+throw a |Stopped| exception.  Hence all the workers will terminate.  (It might
+also be necessary to shut down the |seen| set.)
+
+Alternatively, if there is no solution, the |queue| will eventually close
+itself, throwing |Stopped| exceptions to the workers.  A worker will close
+|pathFound|, so the coordinator will also terminate. 
+\end{slide}}
+
+%%%%%
+
+\begin{slide}
+\heading{Putting it together}
+
+\begin{scala}
+  def apply(start: N, isTarget: N => Boolean): Option[List[N]] = {
+    ... // initialise queue and seen set.
+    val workers = || (for(_ <- 0 until numWorkers) yield worker)
+    run(workers || coordinator)
+    result
+  }
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Breadth-first search}
+
+This doesn't quite achieve breadth-first search.  If a thread is delayed,
+deeper nodes might be explored while a node from an earlier ply is being
+expanded.  This might mean that the path that is found isn't the shortest.  In
+many cases, this won't matter much.  If true breadth-first behaviour is
+needed, the threads can performs a global synchronisation at the end of each
+ply.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Bag-of-tasks with replacement}
+
+The implementation can be seen as a variant of the bag-of-tasks pattern, but
+where additional tasks may be added to the bag.
+
+Each node in the bag (the queue) represents the task of expanding that node.
+This may lead to additional tasks being added to the bag.
+\end{slide}

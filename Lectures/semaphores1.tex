@@ -1,0 +1,173 @@
+
+\begin{slide}
+\heading{Semaphores}
+
+A semaphore is an important synchronisation tool.  The idea (and name) is
+inspired by railway signalling, where a flag is raised to indicate that track
+ahead can be entered, or lowered to indicate that the track ahead is occupied.
+A train arriving at the section of track waits until the flag is up, enters
+the section, and the flag is lowered again.  When the train leaves the section
+of track, the flag is raised. 
+
+A semaphore 
+%% has a boolean variable, that indicates whether the flag is down.  It
+has two operations:
+%
+\begin{description}
+\item[{down}]
+Wait until the flag is in the up position, and then put the flag down and
+procced;
+
+\item[{up}]
+Put the flag up, to allow another process to proceed.
+\end{description}
+
+\SCALA{down} and \SCALA{up} are sometimes called \SCALA{P} and \SCALA{V},
+{\codecolour\sf wait} and \SCALA{signal}, or \SCALA{acquire} and
+\SCALA{release}. 
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Semaphores in Scala}
+
+A semaphore can be implemented as a monitor, as below.
+%
+\begin{scala}
+/** A binary semaphore.
+  * @param isUp is the semaphore initially in the "up" state? */
+class Semaphore(private var isUp: Boolean){
+  def down = synchronized{
+    while(!isUp) wait()
+    isUp = false
+  }
+
+  def up = synchronized{
+    require(!isUp); isUp = true; notify()
+  }
+}
+\end{scala}
+% Note that |up| has no effect if the semaphore is already up. 
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Implementing semaphores}
+
+Note that the |up| operation requires that the semaphore is not already up.
+My experience is that trying to put the semaphore up when it is already up is
+nearly always an error: a signal gets lost.
+
+However, other implementations of semaphores allow such an |up|, but are such
+that the operation has no effect. 
+
+In fact, many operating system kernels provide implementations of semaphores.  
+
+Semaphores can then be used to implement monitors within a programming
+language. 
+
+%% \bigskip
+
+%% \heading{Semaphores in SCO}
+
+%% The factory method |BooleanSemaphore(available)| creates a new semaphore.
+%% (The method has various optional arguments, not included on the previous
+%% slide.) 
+
+
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Using a semaphore for mutual exclusion}
+
+One use of semaphores is to provide mutual exclusion.  
+
+Such a semaphore is created with
+\begin{scala}
+  val mutex = new Semaphore(true)
+\end{scala}
+or
+\begin{scala}
+  val mutex = new MutexSemaphore
+\end{scala}
+%
+using the definition
+%
+\begin{scala}
+class MutexSemaphore extends Semaphore(true)
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Using a semaphore for mutual exclusion}
+
+A thread entering the critical region executes
+\begin{scala}
+  mutex.down
+\end{scala}
+%
+This blocks if the semaphore is already down, i.e.~if another thread is in the
+critical region.  In the initial state, the operation will not block. 
+
+A thread leaving the critical region executes
+\begin{scala}
+  mutex.up
+\end{scala}
+%
+This unblocks a waiting thread (if there is one).
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Using a semaphore for mutual exclusion}
+
+This version of the counter protects \SCALA{x} using a semaphore.
+%
+\begin{scala}
+object Counter{
+  private var x = 0
+  
+  private var mutex = new MutexSemaphore
+    
+  def inc = { mutex.down; x = x+1; mutex.up }
+
+  def dec = { mutex.down; x = x-1; mutex.up }
+
+  def getX = { mutex.down; val result = x; mutex.up; result }
+}
+\end{scala}
+%
+% Note that this method can be used to provide mutual exclusion on arbitrary
+% objects (like a monitor).
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Misusing semaphores}
+
+What is wrong with the following code, where semaphore \SCALA{sem1} is used to
+protect resource \SCALA{res1}, and semaphore \SCALA{sem2} is used to protect
+resource \SCALA{res2}?
+%
+\begin{scala}
+val sem1 = MutexSemaphore(); val sem2 = MutexSemaphore()
+
+def p = proc{
+  sem1.down; ...; sem2.down; ... ; sem2.up; ...; sem1.up
+}
+
+def q = proc{
+  sem2.down; ...; sem1.down; ... ; sem1.up; ...; sem2.up
+}
+
+run(p || q)
+\end{scala}
+\end{slide}

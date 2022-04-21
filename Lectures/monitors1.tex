@@ -1,0 +1,173 @@
+
+\begin{slide}
+\heading{Low-level concurrency mechanisms}
+
+So far, we have looked at threads that communicate via channels.
+
+At a higher level of abstraction, we have looked at threads that communicate
+via concurrent datatypes. 
+
+We now look at the low-level concurrency primitives provided by the language.
+(These can be used to implement high-level concurrency mechanisms such as
+channels; or can be used to implement concurrent datatypes.) 
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{A race condition}
+
+The following program has an obvious race condition.
+%
+\begin{scala}
+object Race2{
+  object Counter{
+    private var x = 0
+    def inc = x = x+1
+    def dec = x = x-1
+    def getX = x
+  }
+
+  def p = thread{ for(i <- 0 until 1000) Counter.inc }
+  def q = thread{ for(i <- 0 until 1000) Counter.dec }
+  def system = p || q
+
+  def main(args : Array[String]) = { run(system); println(Counter.getX) }
+}
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Mutual exclusion}
+
+The program on the previous slide allowed the two processes \SCALA{p} and
+\SCALA{q} to simultaneously access the variable \SCALA{Counter.x}, via the
+\SCALA{inc} and \SCALA{dec} operations.
+
+We would like to ensure that the operations \SCALA{inc} and \SCALA{dec} are
+performed under \emph{mutual exclusion}: i.e.~at most one of them can be
+performed at a time.  
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Monitors}
+
+An \emph{object} encapsulates data and operations on that data.
+
+A \emph{monitor} encapsulates data, operations on that data, and suitable
+synchronisations to ensure mutual exclusion.
+
+In order to execute code in the monitor, a thread must first of all obtain the
+lock on the monitor.  The thread releases the lock when it exits the monitor.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Signalling}
+
+In addition, a monitor sometimes requires a thread to wait until it receives a
+signal from another thread.  
+
+For example, consider a partial queue.  If a thread attempting to dequeue
+finds that the queue is empty, it should wait.  When an enqueue operation
+makes the queue non-empty, it can signal to the waiting thread.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Monitors}
+
+The way to ensure mutual exclusion within a Scala object  is via the
+\SCALA{synchronized} method.  
+
+If |o| is a reference object and \SCALA{e} is an expression, then
+\SCALA{o.synchronized\{ e \}} acts much like \SCALA{e}, except that at most
+one thread can be active within the \SCALA{synchronized} expressions of the
+monitor~|o| at any time. 
+
+If a thread tries to execute a \SCALA{synchronized}
+expression while another thread is active within the monitor, then the former
+thread has to wait until the latter releases the lock. 
+
+This can be used to ensure that executions of code within
+|synchronized| blocks do not interfere with one another. 
+
+|synchronized{ e }| is shorthand for |this.synchronized{ e }|; i.e.~the
+current object is used for the synchronisation.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Using \protect\SCALA{synchronized} to avoid a race condition}
+
+\begin{scala}
+object Race3{
+  object Counter{
+    private var x = 0
+    def inc = synchronized{ x = x+1 }
+    def dec = synchronized{ x = x-1 }
+    def getX = synchronized{ x }
+  }
+
+  def p = thread{ for(i <- 0 until 1000) Counter.inc }
+  def q = thread{ for(i <- 0 until 1000) Counter.dec }
+  def system = p || q
+
+  def main(args : Array[String]) = { run(system); println(Counter.getX) }
+}
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Example: a concurrent set}
+
+Here's an implementation of the concurrent set we used in the
+breadth-first search example. 
+\begin{scala}
+/** A concurrent set with an add operation. */
+class ConcSet[A]{
+  /** The underlying set. */
+  private val set = scala.collection.mutable.Set[A]()
+
+  /** Add x to this set.  Return true if x was not previously in the set. */
+  def add(x: A): Boolean = synchronized{ set.add(x) }
+}
+\end{scala}
+
+Additional operations can be added similarly. 
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Re-entry}
+
+A thread inside a |synchronized| block can enter another |synchronized| block
+on the same object.  For example
+%
+\begin{scala}
+  synchronized{
+    ...
+    synchronized{ ... }
+    ...
+  }
+\end{scala}
+%
+Or
+%
+\begin{scala}
+def f(x: Int) = synchronized{ ...; g(y); ... }
+def g(y: Int) = synchronized{ ... }
+\end{scala}
+
+We say that |synchronized| blocks are \emph{re-entrant}. 
+\end{slide}

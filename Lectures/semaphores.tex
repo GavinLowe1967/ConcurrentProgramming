@@ -1,0 +1,231 @@
+\documentclass[notes,color]{sepslide0}
+\usepackage{graphicx}
+\usepackage[overheads]{mysepslides}
+\usepackage{tech,graphicx,url,tikz,scalalistings}
+
+\title{Semaphores} 
+\author{Gavin Lowe}
+
+\everymath{\color{violet}}
+\def\scalacolour{\color{violet}}
+\def\codecolour{\scalashape}
+
+\begin{document}
+
+\begin{slide}
+  
+  \Title
+
+Reading: Andrews Chapter 4.
+\end{slide}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\input{semaphores1} % introduction, use for mutex
+\input{semaphores2} % signalling, passing the baton, queue, barrier,
+                    % queue-lock
+% \input{semaphores-syncchan}
+\input{semaphores-readers-writers}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%%%%%%%%%%
+
+\begin{slide}
+\heading{Counting semaphores}
+
+The semaphores we have seen so far have been binary: they have just two
+states, up and down.
+
+A counting semaphore has a non-negative integer as its state.
+%
+\begin{itemize}
+\item
+The \SCALA{down} operation waits until the value is strictly positive, and
+decrements it;
+
+\item
+The \SCALA{up} operation increments the value, waking a process if necessary.
+\end{itemize}
+%
+The value of the semaphore can be thought of as the number of \emph{permits}
+available for |down| operations. 
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Counting semaphores}
+
+\begin{scala}
+class CountingSemaphore(private var permits: Int = 0){
+
+  def down = synchronized{
+    while(permits == 0) wait()
+    permits -= 1
+  }
+
+  def up = synchronized{
+    permits += 1
+    notify()
+  }
+}
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{A partial queue}
+
+We can implement a queue, using a counting semaphore to block attempts to
+remove elements until the buffer is non-empty.
+
+\begin{scala}
+/** A queue implemented using a counting semaphore. */
+class CountingSemaphorePartialQueue[T] extends PartialQueue[T]{
+  /** The queue itself. */
+  private val queue = new scala.collection.mutable.Queue[T]
+
+  /** Semaphore for mutual exclusion on queue. */
+  private val mutex = new MutexSemaphore
+
+  /** Semaphore for dequeueing.  The state of the semaphore equals
+    * queue.length. */
+  private val size = new CountingSemaphore(0)
+  ...
+}
+\end{scala}
+\end{slide}
+
+%%%%%
+
+
+\begin{slide}
+\heading{A partial queue}
+
+\begin{scala}
+  def enqueue(v: T) = {
+    mutex.down
+    queue.enqueue(v)
+    size.up
+    mutex.up
+  }
+
+  def dequeue: T = {
+    size.down
+    mutex.down
+    val result = queue.dequeue
+    mutex.up
+    result
+  }
+\end{scala}
+\end{slide}
+
+%%%%%
+
+
+
+\begin{slide}
+\heading{A partial queue}
+
+Note that the order in which |dequeue| obtains the semaphores is
+important.  If it were to obtain |mutex| first, and |queue| is empty,
+then this would block |enqueue|, so the system would be deadlocked. 
+
+\emph{Exercise:} adapt this example to produce a bounded buffer that cannot
+hold more than $n$ pieces of data.
+\end{slide}
+
+
+% \begin{scala}
+% class Buff[T]{
+%   private val queue = new scala.collection.mutable.Queue[T];
+%   private val mutex = new Semaphore; 
+%   private val size = new CountingSemaphore(0);
+%   ...
+% }
+% \end{scala}
+% %
+% \SCALA{queue} holds the data.  
+
+% \SCALA{mutex} is used to ensure mutual exclusion of operations upon
+% \SCALA{queue}.  
+
+% \SCALA{size} is a counting semaphore which stores the number of elements
+% currently in \SCALA{queue}; it is used to block attempts to remove elements
+% when its value is~$0$.
+% \end{slide}
+
+% %%%%%
+
+% \begin{slide}
+% \heading{An unbounded buffer}
+
+% \begin{scala}
+% class Buff[T]{
+%   ...
+
+%   def add(v:T) = {
+%     mutex.down;
+%     queue.enqueue(v);
+%     size.up; mutex.up;
+%   }
+
+%   def remove:T = {
+%     size.down; mutex down;
+%     val result = queue.dequeue;
+%     mutex.up; return result;
+%   }
+% }
+% \end{scala}
+% \end{slide}
+
+%%%%%
+
+% \begin{slide}
+% \heading{A bounded buffer}
+
+% \emph{Exercise:} adapt this example to produce a bounded buffer, that cannot
+% hold more than $n$ pieces of data.
+% \end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Summary}
+
+\begin{itemize}
+\item
+Semantics of semaphores;
+
+\item
+Implementing a semaphore using a monitor;
+
+\item
+Using a semaphore to enforce mutual exclusion;
+
+\item
+Dangers of deadlock;
+
+\item
+Using a semaphore for signalling;
+
+\item
+Examples;
+
+\item
+Passing the baton;
+
+\item
+Fairness;
+
+\item
+Counting semaphores.
+\end{itemize}
+\end{slide}
+
+\end{document}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

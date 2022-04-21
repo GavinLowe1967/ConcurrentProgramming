@@ -1,0 +1,287 @@
+\documentclass[notes,color]{sepslide0}
+\usepackage{graphicx}
+\usepackage[overheads]{mysepslides}
+\usepackage{tech,graphicx,url,tikz,mathsx,verbatim,scalalistings}
+
+\title{Synchronous Data Parallel Programming} 
+\author{Gavin Lowe}
+
+%\everymath{\color{Plum}}
+%\def\smaller{\small} 
+\def\upto{\mathbin{..}}
+
+\def\scalacolour{\color{violet}}
+
+\begin{document}
+
+\begin{slide}
+  
+  \Title
+
+Reading: Andrews, Chapter 11.
+\end{slide}
+
+%%%%%
+
+\input{dataParallel1} % intro; prefix sums
+\input{dataParallel2} % Jacobi iteration
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%
+
+\begin{slide}
+\heading{Communication with neighbours}
+
+Several applications work on a rectangular grid, where the state of a cell on
+one round depends only on the state of its neighbouring cells at the previous
+round.  Examples:
+%
+\begin{itemize}
+\item
+Cellular automata;
+
+\item
+Solutions to differential equations, e.g.~in weather forecasting or fluid
+dynamics;
+
+\item Image processing, e.g.~smoothing.
+\end{itemize}
+
+In such cases, it is natural to allocate a horizontal strip of cells to each
+thread.  At the end of each round, each thread communicates the state of its
+top row to the thread above it, and communicates the state of its bottom row
+to the thread below it.  
+
+%% These rows can be passed by reference, but it might be necessary to make a
+%% copy to avoid sharing references, e.g. \SCALA{up ! myA(start).toArray}.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Passing arrays in Scala}
+
+Arrays in Scala are reference objects, and so passed by reference.  
+
+Suppose a particular thread has a two-dimensional array \SCALA{myA}, and it
+is responsible for rows \SCALA{[start..end)}, then it can send its top row to
+the thread above it (say on channel \SCALA{up}) by
+%
+\begin{scala}
+up ! myA(start);
+\end{scala}
+%
+The thread above it can receive it (say on channel \SCALA{receiveUp}) as:
+%
+\begin{scala}
+myA(end) = receiveUp?()
+\end{scala}
+%
+However, the two threads now share references to this array, so updates made
+by one thread will have an effect on the other thread --- a race condition!
+
+The solution is either for the first thread to re-initialise
+\SCALA{myA(start)}, e.g., by \SCALA{myA(start) = new Array[Int](N)}, or to
+make a \emph{copy} of the array, e.g., by \SCALA{up ! (myA(start).clone)}.
+\end{slide}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Commented out section
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{comment}
+\begin{slide}
+\heading{Particle computations}
+
+We now consider the problem of simulating the evolution of a large collection
+of $N$ particles (e.g. stars or planets) that evolve under gravity.  
+
+We can do a discrete time simulation, with time quantum \SCALA{deltaT}.
+
+In particular, we'll consider how to construct a concurrent program for this
+task.
+
+For each particle, we need to record its mass, position and velocity:
+%
+\begin{scala}
+val mass = new Array[Double](N)
+type Vector = (Double, Double, Double)
+val position = new Array[Vector](N)
+val velocity = new Array[Vector](N)
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Some physics}
+
+Particle~$i$ will exert a force on particle~$j$ of magnitude
+$G.mass(i).mass(j)/distance^2$, where $G \approx 6.67 \times 10^{-11}$ is the
+gravitational constant, and $distance$ is the distance between them.  This is
+an attractive force, with direction along the vector from $position(j)$ to
+$position(i)$.  
+
+We could calculate the total force exerted on each particle by all other
+particles, and store the results in 
+%
+\begin{scala}
+val force = new Array[Vector](N)
+\end{scala}
+
+We could then update the velocity of each particle~\SCALA{i}
+by:\footnote{assuming we have defined \SCALA{+}, \SCALA{*} and \SCALA{/} to
+  operate over \SCALA{Vector}}
+%
+\begin{scala}
+velocity(i) += deltaT*force(i)/mass(i)
+\end{scala}
+
+And we could update the position of particle~\SCALA{i} by
+%
+\begin{scala}
+position(i) += deltaT*velocity(i)
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Calculating the forces}
+
+Note that the force exerted by particle $i$ on particle $j$ is the same as the
+force exerted by particle $j$ on particle~$i$ (except in the opposite
+direction).  For reasons of efficiency, we do not want to calculate this
+quantity twice.  
+
+What we will do is allocate each thread some set~$S$ of particles.  For each
+particle~$i \in S$, the thread will calculate the forces between $i$ and all
+particles~$j$ with $j>i$.  These will be added to the total forces on both $i$
+and $j$.  Something like:
+%
+\begin{scala}
+for(i <- S; j <- i+1 until N){
+  val thisForce = ... // force exerted on i by j
+  force(i) += thisForce
+  force(j) -= thisForce
+}
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Avoiding race conditions}
+
+The code on the previous slide has an obvious race condition: several
+threads might be trying to write to the same \SCALA{force(i)}
+simultaneously. 
+
+Instead we arrange for each thread~$me$ to write to its own vector of forces.
+%
+\begin{scala}
+val force1 = new Array[Array[Vector]](p,N)
+\end{scala}
+%
+Something like:
+%
+\begin{scala}
+for(i <- S; j <- i+1 until N){
+  val thisForce = ... // force exerted on i by j
+  force1(me)(i) += thisForce
+  force1(me)(j) -= thisForce
+}
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Calculating the total forces}
+
+Once all the \SCALA{force1} values have been calculated, the threads can
+perform a barrier synchronisation.  
+
+Then the thread with set of particles~$S$ can, for each particle~$i \in S$,
+calculate the total force and update the velocity and position:
+%
+\begin{scala}
+for(i <- S){
+  var force: Vector = (0.0, 0.0, 0.0)
+  for(k <- 0 until p) force += force1(k)(i)
+  velocity(i) += deltaT*force/mass(i)
+  position(i) += deltaT*velocity(i)
+}
+\end{scala}
+%
+We expect to have $p \ll N$, so the cost of this extra summation is
+comparatively small. 
+
+The threads can then perform another barrier synchronisation before the next
+round. 
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{The pattern of synchronisation}
+
+This pattern of synchronisation is very common:
+%
+\begin{scala}
+<initialisation>
+barrier.sync
+while(true){
+  <read all variables>
+  barrier.sync
+  <write own variables>
+  barrier.sync
+}
+\end{scala}
+%
+The final synchronisation on each iteration could be replaced by a
+synchronisation using a combining barrier, to decide whether to continue.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Load balancing}
+
+We want to choose the sets $S$ allocated to different threads so as to
+balance the total load.
+
+Note that the cost of calculating all the forces for particle~$i$ is
+$\Theta(N-i)$: not all particles are equal in this regard.
+
+One way to balance the load is to split the $N$ particles into $2p$
+segments, each of size $segSize = N/2p$.  Then we can allocate process~$me$
+the segments~$me$ and $2p-me-1$, i.e.\ particles $[me.segSize \upto
+  (me+1).segSize)$ and $[(2p-me-1).segSize \upto (2p-me).segSize)$.
+\end{slide}
+\end{comment}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% End of comment
+
+%%%%%
+
+\begin{slide}
+\heading{Summary}
+
+\begin{itemize}
+\item 
+Synchronous data parallel programming;
+% Heart-beat algorithms;
+
+\item
+Barrier synchronisation; combining barrier synchronisation;
+
+\item
+Examples, using shared memory or message-passing.
+\end{itemize}
+\end{slide}
+
+\end{document}
+
+

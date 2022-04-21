@@ -1,0 +1,190 @@
+
+\begin{slide}
+\heading{Equal shares?}
+
+In the previous chapter, we chose to distribute the work equally between the
+workers.
+
+This is sensible if each worker will be executed on its own processor,
+all the processors are the same speed, all are equally loaded with other
+tasks, and it's possible to identify what an equal distribution is.
+
+But what if this isn't the case?
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Smaller tasks}
+
+An alternative is to use smaller tasks, with more tasks than workers.  
+
+In the numerical integration example, each task will be to estimate the
+integral over some subinterval.   We use \SCALA{nTasks} tasks, where
+\SCALA{nTasks > nWorkers}.
+
+The tasks are distributed between the workers, each receiving a new
+task when it has finished the previous one.  In this way, the faster workers
+will complete more tasks than the slower ones --- a form of load balancing.
+
+This pattern is known as \emph{bag of tasks}: the controller holds a bag of
+tasks, which it distributes to workers.  (Sometimes workers return sub-tasks
+to the controller, but that's not the case here.)
+\end{slide}
+
+%%%%%
+
+%% \begin{slide}
+%% \heading{Signalling the end}
+
+%% We need some way for the controller to signal to each worker that there are no
+%% more tasks to complete, so each worker can terminate.
+%% \begin{itemize}
+%% \item
+%% The controller could send a special value, like |null|, if it can be guaranteed
+%% that no proper task will take that value.
+
+%% \item
+%% We could use an |Option[Task]| type, sending a value |Some(t)| to indicate a
+%% proper task~|t|, or the value~|None| to indicate there are no more tasks.  But
+%% this adds an overhead of packing and unpacking |Some| values. 
+
+%% \item The paradigmatic CSO way of indicating that a stream of data is finished
+%%   is to close the channel, preventing further communications.
+%% \end{itemize} 
+%% \end{slide}
+
+
+%%%%%
+
+\begin{slide}
+\heading{A worker}
+
+The controller will close the |toWorkers| channel to indicate that there are
+no remaining tasks.
+
+Each  worker process will repeatedly receive and process tasks, until the
+|toWorkers|  channels is closed.  
+%
+\begin{scala}
+  /** A worker, which repeatedly receives arguments from the distributor,
+    * estimates the integral, and sends the result to the collector. */
+  private def worker = thread("worker"){
+    repeat{
+      val (left, right, taskSize, delta) = toWorkers?() 
+      val result = integral(left, right, taskSize, delta)
+      toController!result
+    }
+  }
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{The controller}
+
+We could design the controller to:
+%
+\begin{enumerate}
+\item
+Distribute \SCALA{nWorkers} tasks;
+
+\item
+Repeat \SCALA{nTasks - nWorkers} times: receive a result and distribute the next
+task;
+
+\item
+Receive the final \SCALA{nWorkers} results;
+
+\item
+Close the \SCALA{toWorkers} channel so they can terminate.
+\end{enumerate}
+
+Can we simplify this?
+
+% And what happens if one of the workers dies while awaiting its first task?
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{A parallel controller}
+
+The issues of 
+%
+\begin{itemize}
+\item
+Distributing the tasks (and closing the \SCALA{toWorkers} channel), and
+
+\item
+Receiving the results and adding them up
+\end{itemize}
+%
+are independent.  So let's distribute them between two parallel processes!
+This might also give better performance, if the controller acts as a
+bottleneck.  
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Distributing the tasks}
+
+We again assume here that |n%nTasks == 0|. 
+\begin{scala}
+  /** A distributor, who distributes tasks to the clients. */
+  private def distributor = thread("distributor"){
+    require(n%nTasks == 0)
+    val delta = (b-a)/n               // size of each interval
+    val taskSize = n/nTasks          // number of points per task
+    val taskRange = (b-a)/nTasks // range of each task
+    var left = a                      // left hand boundary of next task
+    for(i <- 0 until nTasks){
+      val right = left+taskRange
+      toWorkers!(left, right, taskSize, delta)
+      left = right
+    }
+    toWorkers.endOfStream
+  }
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Collecting the results}
+
+\begin{scala}
+  /** This variable ends up holding the result. */
+  private var result = 0.0
+
+  /** A collector, that accumulates the sub-results into result. */
+  private def collector = thread("collector"){
+    result = 0.0
+    for(i <- 0 until nTasks) result += (toController?())
+  }
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{The complete system}
+
+\begin{scala}
+  /** The main system. */
+  private def system = {
+    val workers = || (for (i <- 0 until nWorkers) yield worker)
+    workers || distributor || collector
+  }
+
+  def apply: Double = { run(system); result } 
+\end{scala}
+%
+%% (The version on the website creates a new |toWorkers| channel for each run.)
+
+\heading{Testing}
+
+We can test this in the same way as in the previous chapter.
+\end{slide}

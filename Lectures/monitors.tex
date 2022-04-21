@@ -1,0 +1,70 @@
+\documentclass[notes,color]{sepslide0}
+\usepackage{graphicx}
+\usepackage[overheads]{mysepslides}
+\usepackage{tech,graphicx,url,csp-cm,tikz,scalalistings}
+
+\title{Monitors} 
+\author{Gavin Lowe}
+
+% \everymath{\color{Plum}}
+\def\smaller{\small} 
+\def\scalacolour{\color{violet}}
+
+\begin{document}
+
+\begin{slide}
+  
+  \Title
+
+Reading: Andrews Chapter 5.
+\end{slide}
+
+%%%%%
+
+\input{monitors1} % intro, race condition examples.
+\input{monitors2} % producer-consumer example, with one of each
+% \input{monitors3} % multiple producers and consumers; CSO conditions
+\input{monitorChan}
+\input{monitors4} % readers and writers lock
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%%%%%
+
+% \begin{slide}
+% \heading{Analysing synchronisation problems}
+
+% We need better formal analysis techniques!
+% \end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Summary}
+
+\begin{itemize}
+\item 
+Enforcing mutual exclusion using \SCALA{synchronized}.
+
+%% \item
+%% Fine-grained locking; striped locking; sharding.
+
+\item
+\SCALA{wait}, \SCALA{notify}, \SCALA{notifyAll}.
+
+\item
+Thread states; signal-and-continue versus signal-and-wait.
+
+\item
+The Java memory model.
+
+\item
+Examples.
+\end{itemize}
+
+\end{slide}
+
+
+
+\end{document}

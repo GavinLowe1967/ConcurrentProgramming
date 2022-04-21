@@ -1,0 +1,341 @@
+\documentclass[notes,color]{sepslide0}
+\usepackage{graphicx}
+\usepackage[overheads]{mysepslides}
+\usepackage{tech,graphicx,url,tikz,scalalistings}
+
+\title{Patterns of Concurrent Programming} 
+\author{Gavin Lowe}
+
+% \everymath{\color{Plum}}
+% \def\smaller{\small} 
+\def\scalacolour{\color{violet}}
+
+\begin{document}
+
+\begin{slide}
+  
+  \Title
+
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Patterns of concurrent programming} 
+
+We've seen a number of patterns of concurrent programming so far:
+%
+
+\begin{itemize}
+\item Concurrent datatypes;
+
+\item
+Bag-of-tasks (with or without replacement); 
+
+\item
+Synchronous computation; % heart-beat algorithms;
+
+\item
+Interacting peers: central controller; fully-connected topology; ring
+topology; tree topology;
+
+\item
+Clients and servers.
+\end{itemize}
+
+In this chapter we will look at a few other patterns of concurrent programming.
+\end{slide}
+
+%%%%%
+
+\input{patterns-recursive}
+%\input{patterns-bag} %% omit??
+
+%%%%%
+
+\begin{slide}
+\heading{Competition parallel}
+
+The idea of competition parallel is to choose two (or more) different
+algorithms for a problem, and to run them independently in parallel, and see
+which finishes first.
+
+This works well on the boolean satisfiability problem.  The problem is
+NP-complete.  However,  there are a number of SAT-solving algorithms that work
+well in many cases.  But all known algorithms have cases where they perform
+badly, and different algorithms perform badly on different cases.  Therefore
+running two algorithms in competition with one another can give better average
+results than parallelising a single algorithm.
+\end{slide}
+
+%%%%%
+
+\begin{selfnote}
+Boolean satisfiability problem: given a boolean formula such as:
+\[
+(b_1 \lor b_2 \lor \lnot b_3) \land (\lnot b_1 \lor b_3) \land (\lnot b_1 \lor
+b_2 \lor b_3)
+\]
+is there a way of choosing values for the boolean variables to make the
+formula true?
+
+Lots of problems can be mapped onto SAT-solving, e.g. constraint satisfaction,
+model checking. 
+\end{selfnote}
+
+%%%%%
+
+\begin{slide}
+\heading{Task parallel programming}
+
+Most of the concurrent programs we have seen so far have been \emph{data
+  parallel}: the data has been split up between different processes, each of
+which have performed the same task on its data.
+
+An alternative is \emph{task parallel programming}\footnote{This is a
+  different meaning of the word ``task'' than in the bag-of-tasks pattern.},
+where different processes perform different operations on the same data,
+typically in some kind of pipeline.
+
+\vfill
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Examples of task parallel programming}
+
+\begin{itemize}
+\item
+Compilers typically operate in a number of stages, e.g., lexical analysis,
+syntactical analysis, semantic analysis, type checking, code generation,
+optimisation.  Each stage can be implemented by a separate process, passing
+its output to the next process. 
+
+\item
+Unix pipes, e.g.~\texttt{ls -R \| grep elephant \| more}.
+
+\item 
+Google queries: involve searching various indexes, combining the results,
+generating adverts, logging, creating the HTML, etc.
+\end{itemize}
+\end{slide}
+
+%%%%%
+
+%% \begin{slide}
+%% \heading{MapReduce}
+
+%% MapReduce is a concurrent programming model introduced by researchers from
+%% Google,\footnote{{\it MapReduce: Simplified Data Processing on Large Clusters},
+%%   Jeffrey Dean and Sanjay Ghemawat,
+%%   \url{http://labs.google.com/papers/mapreduce.html}} for execution on large
+%% clusters of machines (hundreds or thousands), operating on large data sets
+%% (terabytes).
+
+%% \vfill
+%% \end{slide}
+
+%% %%%%%
+
+%% \begin{slide}
+%% \heading{MapReduce}
+
+%% The programmer defines two functions:
+%% %
+%% \begin{scala}
+%% def map(key1: Key1, val1: Val1) : List[(Key2, Val2)] = ...
+
+%% def reduce(key2: Key2, vals2: List[Val2]) : Val3 = ...
+%% \end{scala}
+%% %
+%% The effect of the corresponding MapReduce program is:
+%% %
+%% \begin{itemize}
+%% \item
+%% For each \SCALA{(key1, val1)} in the input (typically these are (filename,
+%% contents) pairs), calculate \SCALA{map(key1, val1)} to produce a set of
+%% intermediate pairs;
+
+%% \item
+%% For each \SCALA{key2} appearing in the intermediate pairs, let \SCALA{vals2}
+%% be the list of \SCALA{val2} such that \SCALA{(key2, val2)} is in the
+%% intermediate pairs, calculate \SCALA{reduce(key2, vals2)}; combine the results
+%% to give a result of type \SCALA{List[(Key2, Val3)]} (ordered by the
+%% \SCALA{Key2} elements).
+%% \end{itemize}
+%% \end{slide}
+
+%% %%%%%
+
+%% \begin{slide}
+%% \heading{Example: counting occurences of words}
+
+%% Suppose we want to count the number of occurrences of different words in a
+%% large collection of documents.  We can define (where \SCALA{words} splits a
+%% string into a list of words):
+%% %
+%% \begin{scala}
+%% def map(filename: String, contents: String) : List[(String, Int)] =
+%%   for(word <- words(contents)) yield (word, 1)
+
+%% def reduce(word: String, counts: List[Int]) = counts.sum
+%% \end{scala}
+%% \end{slide}
+
+%%%%%
+
+%% \begin{slide}
+%% \heading{MapReduce}
+
+%% The run-time system parallelizes the implementation of the MapReduce, using
+%% the bag-of-tasks pattern, where each task is either a map or reduce on some
+%% block of data.
+
+%% The run-time system takes care of issues such as implementing the controller,
+%% fault tolerance, locality (so tasks are scheduled on machines where the data
+%% is stored, as far as possible), and various optimisations.
+
+%% The pattern seems to be quite generally applicable.  Further, programmers find
+%% it easy to use, since most of the time the semantics is the same as for
+%% sequential execution.  
+%% \end{slide}
+
+%%%%%
+
+
+\begin{slide}
+\heading{Futures}
+
+A \emph{future} is a value that is computed in parallel with the main
+computation, to be used at some time in the future.  For example:
+%
+\begin{scala}
+val x = scala.concurrent.ops.future(
+  <some lengthy computation>
+)
+...
+val y = f(x())
+\end{scala}
+%
+The expression \SCALA{x()} returns the result of the computation, waiting
+until it is complete if necessary.
+
+Of course, it is still necessary to avoid race conditions.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{A simple implementation of futures}
+
+\begin{scala}
+class Future[A](exp: => A){
+  /** Variable to hold the result. */
+  private var result = null.asInstanceOf[A]
+
+  /** Is the result valid? */
+  private var done = false
+
+  /** Server process to calculate the result. */
+  private def server = thread{
+    synchronized{ result = exp; done = true; notifyAll() }
+  }
+
+  server.fork
+
+  /** Get the value of exp. */
+  def apply(): A = synchronized{ while(!done) wait(); result }
+}
+\end{scala}
+\end{slide}
+
+%%%%% 
+
+\begin{slide}
+\heading{Lock-free programming}
+
+In this course, we've taken the view that shared variables should be accessed
+without race conditions.  We've achieved this by different mechanisms:
+%
+\begin{itemize}
+\item By using pure message passing, with different threads having disjoint
+  variables;
+
+\item By having different threads allowed to access each variable in different
+  states, coordinated by message passing and/or barrier synchronisations;
+
+\item By locking, using a monitor (or, in the next chapter, semaphores).
+\end{itemize}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Lock-free programming}
+
+In a message-passing system, certain components, particularly servers, can be
+a bottleneck.  Likewise, any object that uses locking can be a bottleneck.
+These bottlenecks prevent scaling of performance.
+
+An alternative approach is not to use locking, and, instead, to allow race
+conditions in programs.  This is the approach taken in the Concurrent
+Algorithms and Data Structures course.
+
+However, this approach raises problems.  We've previously seen problems
+concerning cache consistency and compiler optimisations.  But even without
+these, it turns out that there are certain problems that cannot be solved
+using standard registers.  For example, it can be proved that it's impossible
+to implement a wait-free concurrent queue in this setting.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Lock-free programming}
+
+Instead, lock-free programming makes use of additional operations provided by
+the hardware.  In particular, it uses a \emph{compare-and-set (CAS)} operation
+on each register.  The CAS operation takes two parameters, an expected value,
+and a new value; if the current value of the register equals the expected
+value, it is replaced by the new value, and |true| is returned; otherwise the
+register is unchanged and |false| is returned.  In pseudo-code:
+%
+\begin{scala}
+def compareAndSet(expected: Int, newValue: Int): Boolean = atomically{
+  if(current == expected){ current = newValue; true } else false
+}
+\end{scala}
+
+The CAS operation can be used to implement many lock-free algorithms and data
+structures. 
+\end{slide}
+
+
+
+%%%%%
+
+\begin{slide}
+\heading{Summary}
+
+\begin{itemize}
+\item
+Recursive parallelism; limited recursive parallelism.
+
+\item
+Competition parallel.
+
+\item 
+Task parallel.
+
+\item
+Futures.
+
+\item
+Lock-free concurrent programming.
+\end{itemize}
+\end{slide}
+
+
+\end{document}
+

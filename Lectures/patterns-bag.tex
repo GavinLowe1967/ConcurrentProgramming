@@ -1,0 +1,250 @@
+
+\begin{slide}
+\heading{Bag of tasks with replacements}
+
+We have already seen the \emph{bag of tasks} pattern:
+%
+\begin{itemize}
+\item
+A controller process holds a bag of tasks that need completing;
+
+\item
+Worker processes repeatedly obtain a task from the controller, and complete
+it.
+\end{itemize}
+
+We saw this in the numerical integration problem, where a task represented an
+interval whose integral needed estimating; no tasks were ever returned to the
+bag, so this made the controller very simple.
+
+We will now look at a more interesting example, where tasks are returned to
+the bag.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Magic squares}
+
+A \emph{magic square} of size~$n$ is an $n$ by $n$ square, containing the
+integers from $1$ to $n^2$, such that the sums of all the rows, columns and
+diagonals are the same.  For example:
+\[
+\begin{array}{\|cccc\|}
+\hline
+16 & 4 & 13 & 1  \\
+2 & 5 & 12 & 15  \\
+9 & 14 & 3 & 8  \\
+7 & 11 & 6 & 10 \\\hline
+\end{array}
+\]
+We will design a concurrent program, using the bag of tasks pattern, to find
+magic squares.
+
+Similar techniques can be used for many other search problems.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Partial solutions}
+
+Each task will correspond to a partial solution of the puzzle, i.e. where
+some, but not necessarily all, of the locations have been filled in.  
+
+A worker process will obtain a partial solution, and, if it is not complete:
+%
+\begin{itemize}
+\item
+choose an empty square;
+
+\item
+create all the partial solutions obtained by filling that square with a value
+that might lead to a complete solution (there might be none);
+
+\item
+return those new partial solutions to the bag.
+\end{itemize}
+\end{slide}
+
+%%%%%
+
+\begin{selfnote}
+
+For example, given the partial solution
+\[
+\begin{array}{|c|c|c|c|}
+\hline
+16 & 4 & 11 & 3\;\:  \\\hline
+2 & 12 &  &   \\\hline
+ &  &  &   \\\hline
+&  &  &  \\ \hline
+\end{array}
+\]
+The next position has to be at least 5 to make it possible for that row to add
+up to 34; so could be 5, 6, 7, 8, 9, 10, 13, 14, 15.
+
+If 5 is selected, the next value has to be 15.
+
+Alternatively, if 8 were selected, no value is posible.
+\end{selfnote}
+
+%%%%%
+
+\begin{slide}
+\heading{Representing partial solutions}
+
+We will represent partial solutions using objects of the following class.
+%
+\begin{scala}
+class PartialSoln(n : Int){
+  // Create an empty partial solution
+  def empty = {...} 
+
+  // Is the partial solution completed?
+  def finished : Boolean = {...} 
+
+  // Is it legal to play piece k in position (i,j)
+  def isLegal(i: Int, j: Int, k: Int) : Boolean = {...}
+
+  ...
+}
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Representing partial solutions}
+
+\begin{scala}
+class PartialSoln(n : Int){ ...
+  // Return new partial solution obtained by placing 
+  // k in position (i,j)
+  def doMove(i: Int, j: Int, k: Int) : PartialSoln = {...}
+
+  // Choose a position in which to play
+  def choose : (Int,Int) = {...}
+
+  // Print board
+  def printBoard = {...}
+}
+\end{scala}
+
+We won't discuss the implementation of \SCALA{PartialSoln} (although this
+makes a big difference to the efficiency of the program).  We will concentrate
+on the concurrent programming aspects of the problem. 
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Channels}
+
+The workers will use the following channels:
+\begin{scala}
+val get = OneMany[PartialSoln]; 
+// get jobs from the controller
+
+val put = ManyOne[PartialSoln];
+// pass jobs back to the controller
+
+val done = ManyOne[Unit]; 
+// tell the controller we've finished a job
+
+val toPrinter = ManyOne[PartialSoln]; 
+// channel to printer
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{selfnote}
+Use a separate process for printing.  Why?
+\end{selfnote}
+
+%%%%%
+
+\begin{slide}
+\heading{A worker}
+
+\begin{scala}
+def Worker(n: Int, get: ?[PartialSoln], put: ![PartialSoln], 
+           done: ![Unit], toPrinter: ![PartialSoln]) 
+= proc("Worker"){
+  repeat{
+    val partial = get? ; // get job
+    if(partial.finished) toPrinter!partial;  // done!
+    else{
+      val(i,j) = partial.choose;
+      // Generate all next-states
+      for(k <- 1 to n*n)
+        if(partial.isLegal(i,j,k)) 
+          put!partial.doMove(i,j,k); 
+    }
+    done!();
+  }
+}
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{The Controller}
+
+The Controller will use a stack to store all the current partial solutions.
+
+\emph{Question:} what difference would using a queue make?
+
+The controller needs to know when it can terminate.  This will be when it is
+holding no partial solutions, and none of the workers is busy; it therefore
+needs to keep track of the number of busy workers (that's the reason for the
+\SCALA{done} channel).
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{The Controller}
+
+\begin{scala}
+def Controller(n: Int, get: ![PartialSoln], put: ?[PartialSoln], 
+               done: ?[Unit], toPrinter: ![PartialSoln])
+= proc("Controller"){
+  // Initialise stack holding empty board
+  val init = new PartialSoln(n);
+  init.empty ;
+  val stack = new scala.collection.mutable.Stack[PartialSoln];
+  stack.push(init);
+
+  var busyWorkers = 0; // # workers currently busy
+
+  ...
+}
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{The Controller}
+
+\begin{scala}
+def Controller(...) = proc{
+  ...
+  // Main loop
+  serve(
+    (!stack.isEmpty &&& get) -!-> 
+      { get!(stack.pop) ; busyWorkers += 1; }
+    | (busyWorkers>0 &&& put) -?-> 
+      { val ps = put? ; stack.push(ps); }
+    | (busyWorkers>0 &&& done) -?-> 
+      { done? ; busyWorkers -= 1 }
+  )
+       
+  // Finished, when stack.isEmpty and busyWorkers==0
+  toPrinter.close; get.close;
+}
+\end{scala}
+\end{slide}

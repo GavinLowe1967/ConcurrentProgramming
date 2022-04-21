@@ -1,0 +1,431 @@
+\begin{slide}
+\heading{Tuning}
+
+We want to tune the program to run quickly.  There are two questions to
+consider: 
+%
+\begin{itemize}
+\item How many workers should we use?
+
+\item Should we use buffered channels?
+\end{itemize}
+%
+We can run some experiments to try to obtain (at least) partial answers to
+these; although the answers are likely to vary with the architecture.
+
+We consider $n$ (the number of intervals) as an input: under different
+circumstances, we might want to use different values for~$n$.
+
+%% Each experiment was as follows:
+%% %
+%% \begin{itemize}
+%% \item The experiments were run on a 32-core server (two 2.1GHz Intel(R)
+%% Xeon(R) E5-2683 CPUs with hyperthreading enabled).
+
+%% \item 
+%% Each instance estimated $\int_{-100000}^{+100000} x^2 \cos x \, \mbox{d}x$.
+%% \end{itemize}
+
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{How many workers to use?}
+
+The experiments to decide the number of workers were as follows.
+%
+\begin{itemize}
+\item The experiments were run on a 32-core server (two 2.1GHz Intel(R)
+Xeon(R) E5-2683 CPUs with hyperthreading enabled).
+
+\item 
+Each instance estimated $\int_{-100000}^{+100000} x^2 \cos x \, \mbox{d}x$.
+
+\item
+Various different sizes of $n$ were used between $2^{16}$ and $2^{28}$; each
+observation calculated the integral $2^{28}/n$ times (so all observations were
+about the same amount of work).
+
+\item
+Each instance used buffered channels with capacity 16.
+
+\item
+For each choice of $n$, various values of |nWorkers| were used.
+
+\item
+For each choice of parameters, multiple observations were made, and the mean
+and 95\% confidence interval calculated.
+\end{itemize}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\label{slide:not-bag-of-tasks}
+% scala -cp .:/home/gavinl/Scala/SCL:/home/gavinl/Scala/Util
+% TrapeziumExperiment  --buffering 16 --doLog --strict --server on casteret
+\begin{tikzpicture}
+\begin{semilogxaxis}[
+%  title = Timing experiment on the numerical integration example,
+  ylabel = Time (ms),
+  legend pos = north west,
+  height = 0.98\textheight,
+  width = 0.98\textwidth,
+  scaled ticks = false,
+  xlabel = Number of workers,
+  xmin = 1,
+  ymin = 0,
+  ymax = 12000,
+  log basis x=2
+]
+\input{TrapeziumExperiments/trapeziumExperimentLogScaleBody}
+\end{semilogxaxis}
+\end{tikzpicture}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Discussion of results}
+
+
+\begin{itemize}
+\item The amount of computation each worker performs is $O(1/\sm{nWorkers})$.
+  But the amount of communication grows as $O(\sm{nWorkers})$.  
+
+\item Each of the plots initially falls roughly proportional to
+$1/\sm{nWorkers}$, which is proportional to $\sm{taskSize}$, i.e.~the
+per-thread computation time.  
+
+\item For larger values of |nWorkers|, the graphs seem to grow roughly
+  proportional to |nWorkers|: the communication costs dominate.
+
+%% The plots don't fall quite this quickly because
+%% the communication and thread initialisation overheads grow proportional to
+%% |nWorkers|.
+\end{itemize}
+\end{slide}
+
+%%%%%
+
+
+\begin{slide}
+\heading{Discussion of results}
+
+\begin{itemize}
+\item
+For small values of $n$ (up to about $2^{20}$), the optimal number of workers
+is \emph{less} than the number of machine threads.  
+
+Informal profiling with $n = 2^{18}$ and 64 workers shows that each worker
+spends less than 25\% of its time calculating the integral: most of its
+time is spent waiting for a task or waiting to send its result back to the
+controller.
+% scala -cp .:/home/gavinl/Scala/SCL:/home/gavinl/Scala/Util TrapeziumRun -p  64 --profile --reps 100 --size 262144 --buffering 16
+
+
+The extra computation is dwarfed by the communication overheads. 
+
+%% Extra threads reduce the per-thread computation time; but this is out-weighed
+%% by the thread-creation and communication overheads.  In addition, the
+%% controller acts as a bottleneck.
+
+%% Beyond the optimal point, performance falls off rapidly: the thread-creation
+%% and communication overheads dominate, and these are proportional to the number
+%% of threads. 
+
+\item
+For larger values of $n$, the optimal number of workers is \emph{more} than
+the number of machine threads (although the graphs are quite flat in this
+range).  
+
+Having more program threads than machine threads seems to give the
+scheduler more chance for load balancing (rather like the pattern we will
+look at in the next chapter). 
+\end{itemize}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Experiment concerning buffering}
+
+We can carry out a similar experiment concerning the amount of buffering.
+Some details:
+%
+\begin{itemize}
+\item Various different sizes of $n$;
+
+\item 64 worker threads;
+
+\item Different amounts of buffering, including 0 (i.e.~a synchronous
+  channel);
+
+\item Other details as for the previous experiment.
+\end{itemize}
+\end{slide}
+
+%%%%%
+
+
+\begin{slide}
+\begin{tikzpicture}
+\begin{axis}[
+%  title = Timing experiment on the numerical integration example,
+  ylabel = Time (ms),
+  legend pos = north east,
+  height = 0.98\textheight,
+  width = 0.98\textwidth,
+  scaled ticks = false,
+  %title = Experiment on the benefits of buffering,
+  xlabel = Amount of buffering,
+  xtick = data,
+  ymax = 11500,
+  symbolic x coords={0,1,2,4,8,16,32}
+]
+\input{TrapeziumExperiments/trapeziumBufferingBody}
+\end{axis}
+\end{tikzpicture}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Discussion of results}
+
+Buffering helps for examples with more workers than the optimal number (for
+the given~$n$).  Curiously, buffering of size~1 makes things slower, however.
+
+For examples with a more appropriate number of workers (for the given~$n$),
+buffering makes very little difference, in this case.
+\end{slide}
+
+% \begin{slide}
+% \heading{Experimental results}
+
+% The following table shows the time taken (in ms) to run the system, with
+% \SCALA{n=63000}, on an 8 processor machine, with Just In Time compilation
+% turned \emph{off} (averaged over 200 runs).
+% %
+% \begin{trivlist}\item[]\def\tabcolsep{1.7mm}
+% \begin{tabular}{*{19}{c}}
+% nWorkers: & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 & 10 & 12 & 15 & 20\\
+% time: & 165 & 108 & 85 & 70 & 60 & 55 & 52 & 51 & 59 & 59 & 55 & 52 & 51\\[2mm]
+% \end{tabular}
+% \end{trivlist}
+
+% How can we explain the figures?
+% \end{slide}
+
+% %%%%%
+
+% \begin{selfnote}
+% The fastest is when each worker is on a separate processor.  (In this case the
+% controller doesn't do much work.  In an example where the controller does a
+% lot of work, the fastest might be when the $\# workers = \# processors - 1$.) 
+
+% In an ideal world, it would be $1/nWorkers$ for $nWorkers \le 8$.  But there's an
+% overhead, both per extra process and overall.
+
+% Once $nWorkers > 8$, the processes have to compete for the processors, and the
+% extra time for the context switches makes it slower overall.
+
+% I don't really understand why it gets faster again for 15 and 20.
+% \end{selfnote}
+
+%% n = 630000, 100 times each, JIT off
+
+%% nWorkers = 1      Time taken: 156.061
+%% nWorkers = 2      Time taken: 109.354
+%% nWorkers = 3      Time taken: 87.591
+%% nWorkers = 4      Time taken: 70.119
+%% nWorkers = 5      Time taken: 60.185
+%% nWorkers = 6      Time taken: 55.064
+%% nWorkers = 7      Time taken: 52.063
+%% nWorkers = 8      Time taken: 51.971
+%% nWorkers = 9      Time taken: 56.148
+%% nWorkers = 10     Time taken: 58.047
+%% nWorkers = 12     Time taken: 59.018
+%% nWorkers = 15     Time taken: 56.04
+%% nWorkers = 20     Time taken: 57.163
+
+%%%%%
+
+% \begin{slide}
+% \heading{Experimental results}
+
+% The following table shows the time taken (in ms) to run the system, with
+% \SCALA{n=1260000} (20 times more than the previous experiment), on the same
+% machine, with Just In Time compilation turned \emph{on} (again averaged over
+% 200 runs).
+% %
+% \begin{trivlist}\item[]\def\tabcolsep{1.5mm}%
+% \begin{tabular}{*{19}{c}}
+% nWorkers: & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8  & 9 & 10 & 12 & 15 & 20 \\
+% time:  & 152 & 157 & 134 & 117 &  100 & 80 & 74 & 69 & 63 & 64 & 64 & 65 & 67
+% % time:   & 76 & 79 & 64 & 56 & 48 & 43 & 39 & 37 & 37 & 36 & 37 & 37 & 39
+% \end{tabular}
+% \end{trivlist}
+% %
+% The Just In Time compilation has an odd effect!
+% \end{slide}
+
+% %%%%%
+
+% \begin{slide}
+% \heading{Comments}
+
+% In this case, we could have constructed the workers with the
+% appropriate values for \SCALA{f, l, r, taskSize, delta}, rather than having the
+% controller distribute them.  However, we wanted to illustrate the
+% pattern of having a controller distribute work to the workers.
+% \end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Experimental design}
+
+Performance is affected by a number of factors.  Hence, the results follow a
+random distribution.  We need to
+%
+\begin{itemize}
+\item
+Control the behaviour so as to reduce ``noise'' in the results as much as
+possible;
+
+\item
+Perform a statistical analysis of the results so as to understand their
+significance.
+\end{itemize}
+
+See \emph{Statistically Rigorous Java Performance Evaluation}, by Andy
+Georges, Dries Buytaert and Lieven Eeckhout.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Experimental design}
+
+Performance of any timing experiment can be affected by other processes
+running on the same machine, causing the threads of the experiment to be
+de-scheduled. 
+
+Therefore, timing experiments should be run on a dedicated machine, with as
+few other processes (particularly CPU-intensive processes) as possible running
+at the same time.
+
+% Also, if you use a network filestore, loading class files across the network
+% can affect the run-time.  This can be avoided by ignoring the first
+% observation. 
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Independence of observations}
+
+We want different observations to be independent.  Different observations run
+on the same JVM can affect one another for several reasons:
+%
+\begin{itemize}
+\item
+Just-in-time (JIT) compilation;
+
+\item
+Garbage collection;
+
+% \item
+% Program locality affecting memory performance;
+
+\item
+The data structure being tested not being re-set to its initial state.
+\end{itemize}
+%
+Therefore each observation should normally be performed on a separate run of
+the JVM.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Independence of observations}
+
+My normal approach is to write a stand-alone \emph{observation} program that
+reads parameters of the observation from the command line, performs the
+observation, and prints the time taken onto standard output.
+
+A separate \emph{test harness} program invokes the observation program as a
+separate operating system process, and reads the result.  For each choice of
+parameters, it repeats this and performs a statistical analysis.
+
+This means that start-up costs, such as JIT compilation, are included in the
+observation.  If steady-state performance is relevant, either do long runs, or
+start timing only once steady-state behaviour is reached.  Try to get the
+observations to match real use cases.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Statistical analysis}
+
+Given $k$ observations $x_i$ ($0 \le i < k$), we can calculate their mean:
+\[
+m = \frac{\sum_{i = 0}^{k-1} x_i}{k}.
+\]
+
+We are actually interested in the mean $\mu$ of the underlying probability
+distribution from which the observations are made. 
+
+We can take $m$ as an estimate of $\mu$, but how accurate is it?
+
+Let $\alpha \in [0,1]$, e.g.\ $\alpha = 0.05$; we call $\alpha$ the
+significance level.  We want a \emph{confidence interval} $[m-s, m+s]$ such
+that $\mu$ is in this interval with probability~$1-\alpha$.
+
+More precisely, if we repeat this procedure multiple times, the calculated
+confidence interval will include $\mu$ a proportion $1-\alpha$ of the time. 
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Statistical analysis}
+
+See the paper by Georges et al.\ or a statistics text book for details on how
+to calculate the confidence interval.  
+
+The course website contains code to calculate the mean and confidence
+interval. 
+%% The  function
+%% \begin{scala}
+%% ox.cads.experiments.ConfidenceIntervals(xs: Array[Double], alpha: Double)
+%% \end{scala}
+%% %
+%% returns the pair $(m, s)$. 
+
+$\alpha$ is called the significance level, and $1-\alpha$ the confidence
+level.  (Earlier we took $\alpha = 0.05$, and so calculated 95\% confidence
+intervals.) 
+\end{slide}
+
+%%%%%
+
+%% \begin{slide}
+%% \heading{Obtaining decent confidence intervals}
+
+%% We need to perform enough observations that we end up with decent confidence
+%% intervals.  But running lots of experiments can be time consuming. 
+
+%% The experiments repeated each observation at least five times, and until
+%% either half the confidence interval ($s$) is less than 1\% of the mean, or 50
+%% observations had been done.  This is pragmatic: once the confidence interval
+%% is good enough, we can stop making more observations.
+
+%% %  (The function
+%% % |ox.cads.experiments.Experiments.iterateMeasurement| supports
+%% % this.)
+%% \end{slide}

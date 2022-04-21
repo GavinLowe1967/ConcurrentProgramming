@@ -1,0 +1,69 @@
+\begin{slide}
+\heading{A synchronous channel}
+
+We will adapt the |Slot| example to implement a synchronous channel, suitable
+for use by a \emph{single} sender and a \emph{single} receiver.
+
+We need to arrange for the sender to wait until it receives a signal from
+the receiver. 
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{A synchronous channel}
+
+\begin{scala}
+/** A one-one synchronous channel passing data of type A, implemented using a
+  * monitor. */
+class SyncChan[A]{
+  /** The current or previous value. */
+  private var value = null.asInstanceOf[A]
+
+  /** Is the current value of £value£ valid, i.e. ready to be received? */
+  private var full = false
+
+  /** Send x on the channel, synchronously. */
+  def send(x: A) = ...
+
+  /** Receive a value on the channel. */
+  def receive: A = ...
+}
+\end{scala}
+\end{slide}
+
+
+%%%%%
+
+\begin{slide}
+\heading{A synchronous channel}
+
+\begin{scala}
+  def send(x: A) = synchronized{
+    assert(!full)           // previous round must be complete
+    value = x; full = true // deposit my value 
+    notify()                // signal to receiver at (2)
+    while(full) wait()      // wait for receiver (1)
+  }
+
+  def receive: A = synchronized{
+    while(!full) wait()     // wait for sender (2)
+    full = false            // clear value 
+    notify()                // notify sender at (1)
+    value
+  }
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Testing}
+
+We can test the channel using logging.  We arrange for a single sender and a
+single receiver to use the channel, writing events to the log before and after
+each operation.  We then traverse the log, checking that no call returns
+before both the |send| and |receive| operations have been called, and that
+each value received matches the value sent. 
+\end{slide}
+

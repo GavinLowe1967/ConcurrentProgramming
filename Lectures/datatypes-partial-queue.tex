@@ -1,0 +1,195 @@
+
+
+\begin{slide}
+\heading{A partial queue}
+
+Remember that we earlier decided to return |None| if |dequeue| is called when
+the queue is empty.  An alternative is to block that thread until there is a
+value to be dequeued.  This gives a partial queue, with the following
+interface. 
+
+\begin{scala}
+trait PartialQueue[T]{
+  /** Enqueue x. */
+  def enqueue(x: T): Unit
+
+  /** Dequeue a value.  Blocks until the queue is non-empty. */
+  def dequeue: T
+
+  /** Shut down the queue. */
+  def shutdown
+}
+\end{scala}
+Note that if the queue is empty and all threads are attempting a dequeue, the
+system will deadlock. 
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{A partial queue}
+
+\begin{scala}
+class ServerPartialQueue[T] extends PartialQueue[T]{
+  // Channel for dequeueing
+  private val dequeueChan = new SyncChan[T]
+
+  def dequeue: T = dequeueChan?()
+
+  private def server = thread{
+    val queue = new Queue[T]
+    serve(
+      enqueueChan =?=> { x => queue.enqueue(x) }
+      | queue.nonEmpty && dequeueChan =!=> queue.dequeue
+    )
+  }
+
+  ... // other parts as earlier
+}
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Testing}
+
+We can test this queue for linearizability, much as for the previous version.
+However, we have to amend the sequential specification object to recognise
+that a dequeue cannot happen when the queue is empty. 
+\begin{scala}
+  def seqDequeue(q: S) : (Int, S) = {
+    require(q.nonEmpty); q.dequeue
+  }
+\end{scala}
+An operation on the concurrent datatype cannot be linearized in a state where
+the corresponding operation on the sequential datatype throws an
+|IllegalArgumentException|.
+
+Also we have to be careful that we never get into a deadlocked state where all
+the threads are attempting a dequeue from the empty queue.  I arrange for half
+the threads to perform just enqueues, and the others to perform just dequeues.  
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Termination}
+
+Suppose the queue is empty, and all the threads are attempting a dequeue.
+With the previous design, the system would be deadlocked.
+
+A better approach would be for the server to detect such a state, and react
+accordingly.  We choose to shut down the queue in this case, and arrange for
+each dequeue attempt to throw a |Stopped| exception (an alternative would be
+to use an |Option| value).
+
+In order to do this, the server needs to know how many threads are attempting
+a dequeue.  That means we can't just block the |dequeueChan| channel when the
+queue is empty.  Instead, we arrange for the dequeueing thread to pass a reply
+channel on the |dequeueChan|.  These reply channels are queued until the
+request can be made.  If the number of queued reply channels equals the number
+of workers, the queue shuts down.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Termination}
+
+\begin{scala}
+/** A partial queue that terminates if all worker threads are attempting to
+  * dequeue, and the queue is empty.
+  * @param numWorkers the number of worker threads. */
+class TerminatingPartialQueue[A](numWorkers: Int){
+  private type ReplyChan = Chan[A]
+  /** Channel for dequeueing. */
+  private val dequeueChan = new SyncChan[ReplyChan]
+
+  /** Attempt to dequeue a value.
+    * @throws Stopped exception if the queue has been shutdown. */
+  def dequeue: A = {
+    val reply = new SyncChan[A] // or a BuffChan[A]
+    dequeueChan!reply
+    reply?()
+  }
+  ... 
+}
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Termination}
+
+We might also want to externally shut down the server, (e.g.~in a search
+algorithm, if we find what we're looking for).
+
+It's necessary for the server to control termination in this case, so we
+arrange for the |shutdown| method to send a message to the server. 
+%
+\begin{scala}
+  private val shutdownChan = new SyncChan[Unit]
+
+  /** Shut down this queue. */
+  def shutdown = attempt{ shutdownChan!(()) }{ }
+\end{scala}
+Note: it's possible that the server has already terminated and |shutdownChan|
+closed, in which case we catch the |Stopped| exception.
+
+%% The construct
+%% \begin{scala}
+%%   attempt{ p }{ q }
+%% \end{scala}
+%% Executes |p|; but if |p| throws a |Stopped| exception, that exception is
+%% caught, and |q| is executed. 
+\end{slide}
+  
+%%%%%
+
+\begin{slide}
+\heading{The server}
+
+\begin{scala}
+  private def server = thread("server"){
+    // Currently held values
+    val queue = new Queue[A]()
+    // Queue holding reply channels for current dequeue attempts.
+    val waiters = new Queue[ReplyChan]()
+    // Invariant: queue.isEmpty or waiters.isEmpty
+
+    // Termination: signal to all waiting workers
+    def close = {
+      for(c <- waiters) c.close
+      enqueueChan.close; dequeueChan.close; shutdownChan.close
+    }
+    ...
+  }
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{The server main loop}
+
+\begin{scala}
+    serve(
+      enqueueChan =?=> { x => 
+        if(waiters.nonEmpty){ // pass x directly to a waiting dequeue
+          assert(queue.isEmpty); waiters.dequeue!x
+        }
+        else queue.enqueue(x)
+      }
+      | dequeueChan =?=> { reply =>
+          if(queue.nonEmpty) reply!(queue.dequeue) // service request immediately
+          else{                                        // thread has to wait
+            waiters.enqueue(reply)
+            if(waiters.length == numWorkers) close
+          }
+        }
+      | shutdownChan =?=> { _ => close }
+    )
+\end{scala}
+\end{slide}

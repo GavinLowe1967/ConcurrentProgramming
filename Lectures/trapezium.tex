@@ -1,0 +1,60 @@
+\documentclass[notes,color]{sepslide0}
+\usepackage{graphicx}
+\usepackage[overheads]{mysepslides}
+\usepackage{tech,graphicx,url,tikz}
+
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.10}
+\usepackage{scalalistings}
+\title{Example: Numerical Integration} 
+\author{Gavin Lowe}
+
+\def\scalacolour{\color{violet}}
+
+% \everymath{\color{Plum}}
+% \setcolor{BulletColor}{Plum}
+
+\begin{document}
+
+\begin{slide}
+  
+  \Title
+
+\end{slide}
+
+%%%%%
+
+\input{trapezium1} % up to testing
+\input{trapezium2} % experiments
+
+
+
+\begin{slide}
+\heading{Summary}
+
+\begin{itemize}
+\item
+Data parallel;
+
+\item
+Workers and controllers;
+
+%% \item
+%% Closing channels;
+
+\item
+Testing against a sequential implementation;
+
+\item
+Choosing the number of processes and the amount of buffering;
+
+\item
+Beware of having too many communications: the channel will act as a bottleneck;
+
+\item
+Experimental design.
+\end{itemize}
+\end{slide}
+
+
+\end{document}

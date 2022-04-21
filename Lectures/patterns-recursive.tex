@@ -1,0 +1,176 @@
+
+\begin{slide}
+\heading{Recursive parallelism}
+
+Many sequential programs use a recursive procedure: a procedure that calls
+itself.
+
+The idea of recursive parallelism is that the recursive calls are replaced by
+spawning off parallel processes with the same effect.  This is particularly
+useful where the procedure would make two or more recursive calls to itself
+that are independent (operate on disjoint data): the corresponding recursive
+parallel processes can then run concurrently.
+
+A typical pattern for recursive parallelism is:
+%
+\begin{itemize}
+\item
+In some base case(s), calculate the result directly;
+
+\item
+In other cases, spawn off a parallel process corresponding to each recursive
+call, together with a controller to tie things together.
+\end{itemize}
+
+\end{slide}
+
+
+%% %%%%% 
+
+\begin{slide}
+\heading{Example: Quicksort}
+
+We saw an implementation of Quicksort using recursive parallelism and message
+passing in Chapter~2.
+
+We will now implement Quicksort using recursive parallelism and shared
+variables, to sort an array~|a|.  Different threads will work on disjoint
+segments of~|a|, to avoid race conditions.
+
+We can define a sequential partition function in the normal way.
+%
+\begin{scala}
+  /** Partition the segment a[l..r).
+    * Permute a[l..r) and return k s.t. a[l..k) <= a(k) < a[k+1..r).  */
+  private def partition(l: Int, r: Int): Int = ... // standard definition
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Example: Quicksort}
+
+The recursive parallel definition creates one process to sort each subsegment.
+%
+\begin{scala}
+  /** Sort a[l..r) using recursive parallelism. */
+  private def qsort(l: Int, r: Int): ThreadGroup = thread{
+    if(l+1 < r){
+      val m = partition(l, r)
+      run(qsort(l, m) || qsort(m+1, r))
+    }
+  }
+
+  /** Sort a using recursive parallelism. */
+  def apply() = run(qsort(0, a.length))
+\end{scala}
+\end{slide}
+
+%%%%%
+
+
+\begin{slide}
+\heading{Limits of recursive parallelism}
+
+In many applications, full recursive parallelism will lead to many more
+processes than there are processors.  The overheads involved in spawning off
+new processes, and context-switching between processes will mean that this is
+very inefficient.
+
+A better way is to limit the number of processes.  The simplest way to do this
+is to switch to the sequential algorithm for small sub-problems.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Recursive parallel quicksort with a limit}
+
+\begin{scala}
+  /** Minimum size of segment to sort with recursive parallelism. */
+  val parLimit = a.length / 20
+
+  /** Sort a[l..r) using recursive parallelism for segments of size at least
+    * parLimit. */
+  private def qsortLimit(l: Int, r: Int): ThreadGroup = thread{
+    if(l+1 < r){
+      val m = partition(l, r)
+      if(r-l >= parLimit) run(qsortLimit(l, m) || qsortLimit(m+1, r))
+      else{ run(qsortLimit(l, m)); run(qsortLimit(m+1, r)) }
+    }
+  }
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Quicksort using the bag-of-tasks pattern}
+
+An alternative concurrent implementation of quicksort would use a fixed number
+of threads and the bag-of-tasks pattern, with replacement.  
+
+The bag of tasks could be implemented by a concurrent stack or queue
+(supporting termination).  Each task is a pair |(l,r)| representing that the
+segment |a[l..r)| has to be sorted.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Quicksort using the bag-of-tasks pattern}
+
+
+Each thread repeatedly:
+%
+\begin{itemize}
+\item Removes a task from the bag;
+
+\item If the task is sufficiently small, sorts the segment sequentially;
+
+\item Otherwise, it partitions the segment, and returns two tasks to the bag,
+  representing that the two sub-intervals need to be sorted.
+\end{itemize}
+
+The bag is likely to prove a bottleneck.  Possible enhancements are:
+%
+\begin{itemize}
+\item Don't return empty or singleton tasks to the bag;
+
+\item Rather than returning two bags to the task, just return one, and
+  continue working on the other;
+
+\item Using a more sophisticated concurrent data structure.
+\end{itemize}
+\end{slide}
+
+
+%%%%%
+
+\begin{slide}
+\heading{Parallel collections}
+
+Scala's parallel collections
+API\footnote{%
+\url{https://docs.scala-lang.org/overviews/parallel-collections/overview.html}.}
+aims to support parallelism in a way that means the programmer doesn't have to
+think too much about parallelism.  Example:
+%
+\begin{scala}
+scala> (1 to 10000).toList.par.sum
+res0: Int = 50005000
+\end{scala}
+
+Internally, recursive parallelism is used.  To sum a long list, it can be
+split into two parts; each is summed, in parallel (possibly leading to further
+splits); then the subresults are summed. 
+
+Of course, careless use can create race conditions.
+\begin{scala}
+  var sum = 0
+  (1 to 10000).toList.par.foreach(sum += _)
+\end{scala}
+
+\vfill
+\end{slide}

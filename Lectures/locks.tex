@@ -1,0 +1,321 @@
+\documentclass[notes,color]{sepslide0}
+\usepackage{graphicx}
+\usepackage[overheads]{mysepslides}
+\usepackage{tech,graphicx,url,csp-cm,tikz,scalalistings}
+
+\title{Using Explicit Locks} 
+\author{Gavin Lowe}
+
+% \everymath{\color{Plum}}
+\def\smaller{\small} 
+\def\scalacolour{\color{violet}}
+
+\begin{document}
+
+\begin{slide}
+  
+  \Title
+
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Locks}
+
+In this chapter we will see how to use explicit locks.  An SCL lock can be
+created as
+%
+\begin{scala}
+val lock = new Lock
+\end{scala}
+
+A lock has two principle operations:
+%
+\begin{itemize}
+\item |acquire|: wait until no other thread holds the lock, and then acquire
+  it;
+
+\item |release|: release the lock.
+\end{itemize}
+
+We will see other uses of locks in the next chapter. 
+
+Most other languages provide an implementation of locks with a similar
+interface. 
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Using a lock}
+
+Here's a counter object, using a lock to protect its private variable.
+%
+\begin{scala}
+object Counter{
+  private var x = 0
+  private val lock = new Lock
+  def inc = { lock.acquire; x = x+1; lock.release }
+  def dec = { lock.acquire; x = x-1; lock.release }
+  def getX = { lock.acquire; val result = x; lock.release; result }
+}
+\end{scala}
+%
+This ensures the operations are performed under mutual exclusion. 
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Mutual exclusion}
+
+The |Lock| class also contains the following helper function, to perform some
+computation under mutual exclusion. 
+\begin{scala}
+  /** Execute `comp` under mutual exclusion for this lock. */
+  def mutex[A](comp: => A): A = {
+    acquire; try{comp} finally{release}
+  } 
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Mutual exclusion}
+
+Here's the counter using |mutex|.
+%
+\begin{scala}
+object Counter{
+  private var x = 0
+  private val lock = new Lock
+  def inc = lock.mutex{ x = x+1 }
+  def dec = lock.mutex{ x = x-1 }
+  def getX = lock.mutex{ x }
+}
+\end{scala}
+%
+Using |mutex| is more convenient, particularly if a function has several
+branches, or if the function returns a value that requires mutual exclusion to
+calculate. 
+
+This plays a similar role to a |synchronized| block in a JVM monitor.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Re-entry}
+
+|Lock|s are re-entrant: a thread can acquire a |Lock| that it already holds;
+and needs to release it a corresponding number of times before another
+thread can acquire it.
+
+For example:
+\begin{scala}
+def f(x: Int) = lock.mutex{ ...; g(y); ... }
+def g(y: Int) = lock.mutex{ ... }
+\end{scala}
+\end{slide}
+
+
+%%%%%
+
+\begin{slide}
+\heading{Example: using a monitor to protect an array}
+
+Suppose we want to protect an array~|a| against race conditions.  We
+can wrap it inside a monitor as follows.
+%
+\begin{scala}
+class ArrayWrapper[T](a: Array[T]){
+  private val lock = new Lock
+  /** Get a(i). */
+  def get(i: Int): T = lock.mutex{ a(i) }
+  /** Set a(i) to x. */
+  def set(i: Int, x: T) = lock.mutex{ a(i) = x }
+}
+\end{scala}
+%
+We might want more operations, for example to increment a particular
+location. 
+
+However, this could be a bottleneck: while one thread is accessing
+the array, other threads have to wait, even if they want to access 
+different locations in the array.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Fine-grained locking}
+
+An alternative is to use a separate lock for each entry in the array.
+%
+\begin{scala}
+class ArrayWrapper[T](a: Array[T]){
+  /** locks(i) protects access to a(i). */
+  private val locks = Array.fill(a.size)(new Lock)
+
+  /** Get a(i). */
+  def get(i: Int): T = locks(i).mutex{ a(i) }
+
+  /** Set a(i) to x. */
+  def set(i: Int, x: T) = locks(i).mutex{ a(i) = x }
+}
+\end{scala}
+%
+Note how different threads can simultaneously access different entries
+in the array.
+
+However, this solution is potentially expensive on memory, as |a.size|
+extra lock objects have to be created. 
+\end{slide}
+
+%%%%%
+
+{\advance \slideheight by 4mm
+\begin{slide}
+\heading{Striped locking}
+
+An alternative solution is to create some number |numLocks| of lock
+objects (with $\sm{numLocks} < \sm{a.size}$) where each lock protects
+several entries in the array.
+%
+\begin{scala}
+class ArrayWrapper[T](a: Array[T], numLocks: Int){
+  /** locks(j) protects access to each a(i) such that i%numLocks = j. */
+  private val locks = Array.fill(numLocks)(new Lock)
+
+  /** Get a(i). */
+  def get(i: Int): T = locks(i%numLocks).mutex{ a(i) }
+
+  /** Set a(i) to x. */
+  def set(i: Int, x: T) = locks(i%numLocks).mutex{ a(i) = x }
+}
+\end{scala}
+%
+If |numLocks| is somewhat larger than the number of threads, then
+threads will normally not have to wait (under reasonable assumptions).
+\end{slide}}
+
+%%%%%
+
+\begin{slide}
+\heading{Sharding}
+
+Consider the concurrent set, again.  Suppose this proves to be a bottleneck.
+
+We can split the set up into |n| distinct constituent sets or \emph{shards}.
+The object represents the union of these shards.
+
+We can insert a value |x| into the set based upon its hash code: we can place
+|x| into the shard with index $\sm{x.hashCode} \bmod
+\sm{n}$.\footnote{Be careful: the \% operation works oddly on negative
+  values.}
+
+Each shard can be locked independently, so values can be added to different
+shards concurrently. 
+
+%% This technique is known as \emph{sharding}.  Each constituent set is known as
+%% a \emph{shard}. 
+
+If |n| is a few times larger than the number of threads, and the threads
+access shards independently, then most operations will not be blocked.
+
+\vfill
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{A sharded set}
+
+\begin{scala}
+class ShardedSet[A](n: Int){
+  /** The consituent sets.  theSets(i) contains only values x such that
+    * indexFor(x) = i.  This represents the union of the theSets(i). */
+  private val theSets = Array.fill(n)(scala.collection.mutable.Set[A]())
+
+  /** Locks.  Each locks(i) protects theSets(i). */
+  private val locks = Array.fill(n)(new Lock)
+
+  /** The index of the shard used for x. */
+  private def indexFor(x: A) = (x.hashCode & 0x7FFFFFFF) % n
+
+  /** Add x to this set.  Return true if x was not previously in the set. */
+  def add(x: A): Boolean = {
+    val index = indexFor(x); locks(index).mutex{ theSets(index).add(x) }
+  }
+}
+\end{scala}
+%
+Other operations can be added in a similar way. 
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Fine-grained locking}
+
+The periods during which a thread holds different locks can overlap in
+arbitrary ways, for example:
+%
+\begin{scala}
+  ...; lock1.acquire; ...; lock2.acquire; ...; lock1.release; ...; lock2.release
+\end{scala}
+%
+One cannot achieve a similar effect using |synchronized| blocks, which have to
+be well bracketed.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Summary}
+
+\begin{itemize}
+\item Locks and mutual exclusion;
+
+\item Advanced techniques: fine-grained locking; striped locking; sharding. 
+\end{itemize}
+\end{slide}
+
+%% \begin{slide}
+%% \heading{Alternative: explicit locks}
+
+%% An alternative to using |synchronized| blocks is to use an explicit lock.  The
+%% Java interface |java.util.concurrent.locks.Lock| defines locks with
+%% operations:
+%% %
+%% \begin{itemize}
+%% \item |lock()|: acquire the lock, blocking until it becomes available;
+%% \item |unlock()|: release the lock;
+%% \item |tryLock()|: try to acquire the lock, but give up if another thread
+%%   holds it; return a boolean to indicate if successful. 
+%% \end{itemize}
+%% %
+%% If |l| is a |Lock|, then the standard way to use |l| to protect a computation
+%% |comp| is
+%% %
+%% \begin{scala}
+%% l.lock(); try{ comp } finally{ l.unlock() }
+%% \end{scala}
+%% %
+%% The use of |try{...} finally{...}| ensures that |l| is released on every
+%% branch of~|comp|, including if it throws an exception or uses an explicit
+%% |return| statement.  This is comparable to |synchronized{ comp }|.
+%% \end{slide}
+
+%% %%%%%
+
+%% \begin{slide}
+%% \heading{Alternative: explicit locks}
+
+%% Other languages use similar mechanisms.  For example,
+%% C++ |mutex|s act in the same way.
+%% \end{slide}
+
+\end{document}

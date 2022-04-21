@@ -1,0 +1,298 @@
+
+%% \begin{slide}
+%% \heading{Multiple producers and consumers}
+
+%% Recall the |Slot| example.
+%% \begin{scala}
+%% class Slot[T]{
+%%   private var value = null.asInstanceOf[T]
+%%   private var filled = false
+
+%%   def put(v:T) = synchronized{
+%%     while(filled) wait() // wait for the slot to be emptied
+%%     value = v; filled = true; notify()
+%%   }
+
+%%   def get : T = synchronized{
+%%     while(!filled) wait() // wait for the slot to be filled
+%%     filled = false; notify(); value
+%% } }
+%% \end{scala}
+%% This works correctly with a single producer and consumer, but not with
+%% multiple ones. 
+%% \end{slide}
+
+%%%%%
+
+%% \begin{slide}
+%% \heading{Multiple producers and consumers}
+
+%% Suppose we run the |Slot| with multiple producers and consumers.  It turns out
+%% that we need to use |notifyAll| rather than |notify|.
+%% %
+%% Consider the following execution, if |notify| is used.
+%% %
+%% \begin{enumerate}
+%% \item Two consumers run, and both have to wait.
+
+%% \item Producer~1 runs, sets |filled = true|, wakes up consumer~1, and returns.
+
+%% \item Producer~2 runs, but has to wait.
+
+%% \item Consumer~1 runs, sets |filled = false|, calls |notify()| which wakes up
+%% consumer~2, and returns.
+
+%% \item Consumer~2 runs, finds |filled = false|, so waits again. 
+%% \end{enumerate}
+%% %
+%% Now producer~2 and consumer~2 are both waiting, but they should have been able
+%% to exchange data. 
+
+%% If consumer~1 calls |notifyAll|, things will work correctly. 
+%% \end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{A slot for multiple producers and consumers}
+
+Recall the |Slot| example, to be used by multiple producers and consumers,
+implemented using a JVM monitor.
+%
+\begin{scala}
+class Slot2[T]{
+  private var value = null.asInstanceOf[T]
+  private var filled = false
+
+  def put(v:T) = synchronized{
+    while(filled) wait()
+    value = v; filled = true; notifyAll()
+  }
+
+  def get : T = synchronized{
+    while(!filled) wait()
+    filled = false; notifyAll(); value
+  }
+}
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Targeted notifications}
+
+The code on the previous slide isn't ideal: most threads that are awoken by a
+|notifyAll| will be forced to wait again.
+
+We would like to be able to target a |notify| by a |put| towards a thread
+waiting in |get|; and target a |notify| by a |get| towards a thread
+waiting in |put|.  This isn't possible using standard |notify|s.
+\end{slide}
+
+%%%%%
+
+%% \begin{slide}
+%% \heading{CSO monitors}
+
+%% A CSO monitor is an extension of JVM monitors that allows more targeted
+%% notifications.  
+
+%% A new monitor is created with
+%% \begin{scala}
+%%   private val monitor = new Monitor
+%% \end{scala}
+
+%% The |withLock| method on monitors acts rather like a |synchronized| block:
+%% \begin{scala}
+%%   def put(v: T) = monitor.withLock{ ... }
+%% \end{scala}  
+%% At most one thread can be inside any |withLock| block on a given monitor.
+%% \end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Conditions}
+
+Signalling can be done via a |Condition|.  An SCL |Lock| can be
+associated with any number of |Conditions|, created using the |newCondition|
+operation.  For example
+%
+\begin{scala}
+  private val lock = new Lock
+  // Conditions for signalling the slot is empty or non-empty, respectively.
+  private val empty = lock.newCondition
+  private val nonEmpty = lock.newCondition
+\end{scala}
+%
+(Choose good names for your conditions, and write comments to make clear their
+roles.)
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Conditions}
+
+Each condition has operations as follows:
+%
+\begin{itemize}
+\item |await()|: wait for a signal on this condition;
+\item |signal()|: signal to a thread waiting on this condition;
+\item |signalAll()|: signal to all threads waiting on this condition.
+\end{itemize}
+%
+Each operation should be performed while holding the related lock. 
+
+An |await| releases the lock.  When it receives a signal, it has to re-obtain
+the lock before proceeding.
+
+We can implement monitors using |Lock|s and |Condition|s. 
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{The slot, using conditions}
+
+\begin{scala}
+class MonitorSlot[T]{
+  private var value = null.asInstanceOf[T]
+  private var filled = false
+  private val lock = new Lock
+  // conditions for signalling the slot is empty or non-empty, respectively.
+  private val empty, nonEmpty = lock.newCondition
+
+  def put(v: T) = lock.mutex{
+    while(filled) empty.await()           // wait for the slot to be emptied (1)
+    value = v; filled = true; nonEmpty.signal() // signal to a get at (2)
+  }
+
+  def get: T = lock.mutex{
+    while(!filled) nonEmpty.await()     // wait for the slot to be filled (2)
+    filled = false; empty.signal()        // signal to a put at (1)
+    value
+} }
+\end{scala}
+\end{slide}
+
+%%%%%
+{\advance \slideheight by 2mm
+\begin{slide}
+\heading{Waiting for a condition}
+
+It is often useful to wait on a |Condition| until some test becomes true.  The
+following operation on a |Condition| provides this.
+\begin{scala}
+  def await(test: => Boolean): Unit = while(!test) await()
+\end{scala}
+
+For example
+%
+\begin{scala}
+  def put(v: T) = lock.mutex{
+    empty.await(!filled)                  // wait for the slot to be emptied (1)
+    value = v; filled = true; nonEmpty.signal() // signal to a get at (2)
+  }
+
+  def get: T = lock.mutex{
+    nonEmpty.await(filled)               // wait for the slot to be filled (2)
+    filled = false; empty.signal()       // signal to a put at (1)
+    value
+  }
+\end{scala}
+\end{slide}}
+
+%%%%%
+
+\begin{slide}
+\heading{Spurious wake-ups}
+
+The implementation of SCL |Condition|s protects against spurious
+wake-ups: a waiting thread will wake up \emph{only} when another
+thread sends a signal.  (The same is not true of the implementation in
+\texttt{java.util.concurrent.locks.Condition}!)
+
+However, it might sometimes be necessary to re-check the relevant
+condition after an |await|, in case another thread has invalidated it.
+For example, on the previous slide, a waiting |get| may receive a
+signal from a |put|; but another |get| may take the deposited value
+before the first |get| obtains the lock.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{JVM monitors versus SCL monitors}
+
+SCL monitors are convenient when one wants to target signals.
+However, their implementation is more expensive than JVM monitors: use
+SCL monitors only when there is a good reason to do so.
+\end{slide}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{slide}
+\heading{A bounded partial queue}
+
+Concurrent datatypes can be implemented using monitors. 
+
+We will implement a bounded partial queue.
+%
+\begin{itemize}
+\item |dequeue| operations will block while the queue is empty;
+
+\item |enqueue| operations will block while the queue is full.
+\end{itemize}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{A bounded partial queue}
+
+\begin{scala}
+/** A bounded partial queue implemented as a monitor. */
+class BoundedMonitorPartialQueue[T](bound: Int) extends PartialQueue[T]{
+  /** The queue itself. */
+  private val queue = new scala.collection.mutable.Queue[T]
+
+  /** A lock, to control the synchronisations. */
+  private val lock = new Lock
+
+  /** Condition for signalling that the queue is not full. */
+  private val notFull = lock.newCondition
+
+  /** Condition for signalling that the queue is not empty. */
+  private val notEmpty = lock.newCondition
+  ...
+}
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{A bounded partial queue}
+
+\begin{scala}
+  /** Enqueue x.  Blocks until the queue is not full. */
+  def enqueue(x: T) = lock.mutex{
+    notFull.await(queue.length < bound)           // wait for a signal (1)
+    queue.enqueue(x); notEmpty.signal()           // signal to a dequeue at (2)
+  }
+
+  /** Dequeue a value.  Blocks until the queue is non-empty. */
+  def dequeue: T = lock.mutex{
+    notEmpty.await(queue.nonEmpty)               // wait for a signal (2)
+    val result = queue.dequeue; notFull.signal()  // signal to an enqueue at (1)
+    result
+  }
+\end{scala}
+\end{slide}
+
+
+  % /** Shut down the queue. */
+  % def shutdown = {} // nothing needs doing

@@ -1,0 +1,60 @@
+\documentclass[notes,color]{sepslide0}
+\usepackage{graphicx}
+\usepackage[overheads]{mysepslides}
+\usepackage{tech,graphicx,url,tikz,scalalistings}
+
+\title{Clients and Servers} 
+\author{Gavin Lowe}
+
+% \everymath{\color{Plum}}
+% \def\smaller{\small} 
+\def\scalacolour{\color{violet}}
+
+\begin{document}
+
+\begin{slide}
+  
+  \Title
+
+Reading: Andrews, Section 7.3.
+
+\end{slide}
+
+%%%%%
+
+\input{client-server1} % intro, resource allocation example
+\input{client-server2} % testing; asynchrony & buffering; cf with alt
+%\input{client-server3} % arbitrary many clients; queueing requests
+% \input{client-server-queue} % concurrent total queue, using a server
+%\input{client-server4} % layering; conclusions
+
+%%%%%
+
+\begin{slide}
+\heading{Summary}
+
+\begin{itemize}
+\item
+Clients and servers; 
+
+\item
+Requests and responses;
+
+\item
+Different styles of reply channels;
+
+\item
+Testing via logging;
+
+\item Queueing pending requests; blocking pending requests;
+
+\item
+Asynchrony; 
+
+\item
+Multiple channels or multiple types of request.
+\end{itemize}
+
+\end{slide}
+
+\end{document}

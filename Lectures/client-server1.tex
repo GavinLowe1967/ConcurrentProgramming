@@ -1,0 +1,210 @@
+
+\begin{slide}
+\heading{Clients and servers}
+
+A common pattern in concurrent systems is that of clients and servers.  A
+\emph{server} is a thread or process that repeatedly handles requests from
+\emph{client}s.
+%
+\begin{itemize}
+\item Many modules, such as concurrent datatypes, can be easily implemented in
+this way.
+
+\item This is a pattern that is often used in the implementation of operating
+systems.
+
+\item It's the pattern that is prevalent in networked systems.
+\end{itemize}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Example: a resource server}
+
+Consider a server that is responsible for managing and allocating multiple
+resources of the same kind, such as memory or file blocks.  Clients acquire
+resources for use, and later return them to the server.
+
+What should happen if a client requests a resource and there is none
+available?  We choose to use an |Option[Resource]| value:
+%
+\begin{itemize}
+\item A value |Some(r)| indicates that resource |r| has been acquired;
+
+\item The value |None| indicates that no resource was available.
+\end{itemize}
+%
+In the latter case, it is up to the client to decide what to do (maybe try
+again later, or maybe throw an exception).
+
+An alternative would be for the server to queue the request until it can be
+serviced. 
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Example: a resource server}
+
+We will define a server with the following interface. 
+%
+\begin{scala}
+/** A resource server. */
+trait RAServer{
+  /** Client identities. */
+  type ClientId = Int
+
+  /** Resource identities. */
+  type Resource = Int
+
+  /** Request a resource. */
+  def requestResource(me: ClientId): Option[Resource]
+
+  /** Return a resource. */
+  def returnResource(me: ClientId, r: Resource) 
+} 
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{First implementation}
+
+In the first implementation, we assume clients have identities in the range
+|[0..clients)|, and resources have identities in the range
+  |[0..numResources)|, with |clients| and |numResources| known in advance.
+%
+\begin{scala}
+/** A resource server. 
+  * This version assumes the number of clients is known initially. 
+  * @param clients the number of clients.
+  * @param numResources the number of resources.  */
+class RAServer1(clients: Int, numResources: Int) extends RAServer{
+  ...
+}
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Channels}
+
+Internally, clients will send requests to a server thread, and receive replies
+back. 
+%
+We use one channel per client to allow the server to allocate resources.  We
+use two buffered channels to allow clients to request or return resources.
+%
+\begin{scala}
+class RAServer1(clients: Int, numResources: Int) extends RAServer{
+  /* Channel for requesting a resource. */
+  private val acquireRequestChan = new BuffChan[ClientId](clients)
+
+  /* Channels for optionally allocating a resource, indexed by client IDs. */
+  private val acquireReplyChan = 
+    Array.fill(clients)(new BuffChan[Option[Resource]](1))
+
+  /* Channel for returning a resource. */
+  private val returnChan = new BuffChan[Resource](clients)
+  ...
+}
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Client operations}
+
+\begin{scala}
+  /** Request a resource. */
+  def requestResource(me: ClientId): Option[Resource] = {
+    acquireRequestChan!me  // send request
+    acquireReplyChan(me)?() // wait for response
+  }
+
+  /** Return a resource. */
+  def returnResource(me: ClientId, r: Resource) = returnChan!r
+\end{scala}
+\end{slide}
+
+
+%%%%%
+
+\begin{slide}
+\heading{The server}
+
+The server needs to keep track of the resources that are currently free; we
+use an array \SCALA{free} for this:
+%
+\begin{scala}
+  private def server = thread{
+    // Record whether resource i is available in free(i)
+    val free = Array.fill(numResources)(true)
+
+    serve( 
+      ...
+    )
+  }
+
+  // Fork off the server
+  server.fork
+\end{scala}
+%
+Note that only the server has access to |free|, which avoids race
+conditions.  Declaring variables inside a server can clarify their scope. 
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{The server main loop}
+
+\begin{scala}
+    serve(
+      acquireRequestChan =?=> { c => 
+	// Find free resource
+	var r = 0
+	while(r < numResources && !free(r)) r += 1
+	if(r == numResources) acquireReplyChan(c)!None
+        else{  // Pass resource r back to client c
+	  free(r) = false; acquireReplyChan(c)!Some(r)
+        }
+      }
+      | returnChan =?=> { r => free(r) = true }
+    )
+\end{scala}
+\end{slide}
+
+
+
+
+%%%%%
+
+\begin{slide}
+\heading{Shutting down the server}
+
+It might be necessary to shut down the server, allowing the server thread to
+terminate. 
+%
+\begin{scala}
+  /* Channel for shutting down the server. */
+  private val shutdownChan = new SyncChan[Unit]
+
+  /** Shut down the server. */
+  def shutdown = shutdownChan!()
+  
+  private def server = thread{
+    ...
+    serve(
+      acquireRequestChan =?=> { c => ... }
+      | returnChan =?=> { r => ... }
+      | shutdownChan =?=> { _ =>
+          acquireRequestChan.close; returnChan.close; shutdownChan.close }
+    )
+  }
+\end{scala}  
+\end{slide}

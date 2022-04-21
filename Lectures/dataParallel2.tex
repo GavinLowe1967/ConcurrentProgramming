@@ -1,0 +1,634 @@
+
+\begin{slide}
+\heading{Jacobi iteration}
+
+We now study a program to find an approximate solution to a large system of
+simultaneous linear equations.
+
+Given an $n$ by $n$ matrix~$A = (a_{ij})_{i,j = 0, \ldots, n-1}$, and a
+vector~$b$ of size~$n$, we want to find a vector~$x$ of size~$n$ such that
+$Ax = b$ (or, at least, $Ax \approx b$).
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Jacobi iteration}  
+
+We decompose $A$ as $A = D+R$ where $D$ contains the diagonal entries of~$A$,
+and $R$ contains the rest of the entries.  Then
+\[
+\begin{array}{cl}
+& Ax = b \\
+\iff & Dx + Rx = b \\
+\iff & x = D^{-1} (b - Rx)
+\end{array}
+\]
+%
+provided $a_{ii} \ne 0$ for all~$i$ (so $ D^{-1}$ exists). 
+
+This suggests calculating a sequence of approximations to the solution by
+taking $x^{(0)}$ arbitrary (say all $0$s), and
+\[
+x^{(k+1)} = D^{ - 1} \left( b-R x^{(k)} \right).
+\]
+   
+It can be shown that this iteration will converge on a solution if
+\[
+ \left \| a_{ii} \right \| > \sum_{j \ne i} \left \| a_{ij} \right \| 
+  \qquad \mbox{for all $i$}. 
+\]
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Jacobi iteration}  
+
+It is convenient to rewrite the equation 
+\[
+x^{(k+1)} = D^{ - 1} \left( b-R x^{(k)} \right),
+\]
+in component form:
+\[
+x^{(k+1)}_i = \frac{1}{a_{ii}} \left(b_i -\sum_{j\ne i}a_{ij}x^{(k)}_j\right),\,
+   i=0,\ldots,n-1. 
+\]
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Implementing Jacobi iteration}
+
+We will implement objects with the following signature.
+
+\begin{scala}
+trait Jacobi{
+  val Epsilon = 0.000001 // tolerance
+
+  /** Find x such that a x is approximately b, performing Jacobi iteration until
+    * successive iterations vary by at most Epsilon.
+    * Pre: a is of size n by n, and b is of size n, for some n. */
+  def solve(a: Array[Array[Double]], b: Array[Double]): Array[Double]
+
+  ...
+}
+\end{scala}
+
+The |solve| function will return |x| such that |a x| is approximately |b|,
+iterating until successive values are within |Epsilon| of one another. 
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Sequential solution}
+
+We start by considering a sequential program for Jacobian iteration. 
+On each iteration we need to \emph{simultaneously} set each
+\SCALA{x(i)} by
+\begin{scala}
+  x(i) = update(a, b, x, i, n)
+\end{scala}
+where |update| calculates 
+\( \frac{1}{a_{ii}} \left(b_i -\sum_{j\ne i}a_{ij}x^{(k)}_j\right) \).
+\begin{scala}
+  /** Calculate new value for x(i) based on the old value. */ 
+  @inline protected def update(
+    a: Array[Array[Double]], b: Array[Double], x: Array[Double], i: Int, n: Int)
+      : Double = {
+    var sum = 0.0
+    for(j <- 0 until n; if j != i) sum += a(i)(j)*x(j)
+    (b(i)-sum) / a(i)(i)
+  }
+\end{scala}
+%
+However, if we do this sequentially for each \SCALA{i}, we will not have
+the same effect.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Using a second array}
+
+Instead we will use a pair of arrays |oldX| and |newX|.  On each iteration, we
+will update |newX| based on |oldX|.  
+\begin{scala}
+  newX(i) = update(a, b, oldX, i, n)
+\end{scala}
+%
+We will then swap the arrays for the following iteration.
+
+We terminate when |Math.abs(oldX(i)-newX(i)) < Epsilon|, for all |i|.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Sequential version}
+
+\begin{scala}
+/** A sequential implementation of Jacobian iteration. */
+object SeqJacobi extends Jacobi{
+  def solve(a: Array[Array[Double]], b: Array[Double]): Array[Double] = {
+    val n = a.length
+    require(a.forall(_.length == n) && b.length == n)
+    var oldX, newX = new Array[Double](n); var done = false
+
+    while(!done){
+      done = true
+      for(i <- 0 until n){
+        newX(i) = update(a, b, oldX, i, n)
+	done &&= Math.abs(oldX(i)-newX(i)) < Epsilon
+      }
+      if(!done){ val t = oldX; oldX = newX; newX = t } // swap arrays
+    }
+    newX
+} }
+\end{scala}
+\end{slide}
+
+
+%%%%%
+
+\begin{slide}
+\heading{Concurrent solution}
+
+For the concurrent solution, suppose we use \SCALA{p} workers.
+
+We will split \SCALA{oldX} and \SCALA{newX} into \SCALA{p} disjoint
+segments, and arrange for each worker to complete one segment.
+
+For simplicity, we will assume $\sm n \bmod \sm p = 0$, and take each
+segment to be of height
+\begin{scala}
+val height = n/p
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Concurrent solution}
+
+The concurrent solution will proceed in rounds, each round corresponding to
+one iteration of the sequential solution.  In each round, all workers can read
+all of an array \SCALA{oldX} and each worker can write its own segment of
+\SCALA{newX}.  The roles of the arrays swaps between rounds.
+
+We need to avoid race conditions, so we perform a barrier synchronisation at
+the end of each stage.
+
+%% An alternative approach is to use a single array, and to split each round
+%% into two sub-rounds.  In the first sub-round, all threads read from shared
+%% variables into local variables (but write no shared variables).  In the second
+%% sub-round 
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Termination}
+
+On each iteration, each thread can test whether its segment of \SCALA{x} has
+converged, and store the result in a (thread-local) variable \SCALA{myDone}.
+
+The iteration should terminate when \emph{all} the threads have $\sm{myDone} =
+\sm{true}$.  We can test this as part of the barrier synchronisation of each
+round.
+
+A \emph{combining} barrier 
+\begin{scala}
+  val combBarrier = new CombiningBarrier(p, f)
+\end{scala}
+is like a normal barrier, except each thread contributes some piece of
+data~$x_i$ to each synchronisation, and, assuming |f| is associative, they all
+end up with the value
+\[
+\sm f(x_0, \sm f(x_1, \sm f(x_2, \ldots, \sm f(x_{p-2}, x_{p-1})\ldots).
+\]
+where $x_0, \ldots, x_{p-1}$ are the data provided, in some order.  If |f| is
+commutative, the order doesn't matter. 
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Termination}
+
+In this case, we can define the combining barrier by:
+%
+\begin{scala}
+private val combBarrier = new CombiningBarrier[Boolean](p, _ && _)
+\end{scala}
+%
+Each thread can execute
+\begin{scala}
+done = combBarrier.sync(me, myDone)
+\end{scala}
+%
+Each thread will receive back |true| if (and only if) all threads pass in
+|true|. 
+
+This form of combining barrier is very common, so CSO contains a built-in
+equivalent form
+\begin{scala}
+private val combBarrier = new AndBarrier(p)
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\begin{scala}
+/** A concurrent implementation of Jacobian iteration, using shared variables. */
+class ConcJacobi(p: Int) extends Jacobi{
+  private val combBarrier = new AndBarrier(p)
+
+  def solve(a: Array[Array[Double]], b: Array[Double]): Array[Double] = {
+    val n = a.length
+    require(a.forall(_.length == n) && b.length == n && n%p == 0)
+    val height = n/p // height of one strip
+    var x0, x1 = new Array[Double](n)
+    var result: Array[Double] = null // ends up storing final result
+
+    // Worker to handle rows [me*height .. (me+1)*height).
+    def worker(me: Int) = thread{ ... }
+
+    // Run system
+    run(|| (for (i <- 0 until p) yield worker(i)))
+    result
+} }
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{A worker}
+
+\begin{scala}
+    def worker(me: Int) = thread{
+      val start = me*height; val end = (me+1)*height
+      var oldX = x0; var newX = x1; var done = false
+      while(!done){
+        var myDone = true
+        for(i <- start until end){
+          newX(i) = update(a, b, oldX, i, n)
+          myDone &&= Math.abs(oldX(i)-newX(i)) < Epsilon
+        }
+        done = combBarrier.sync(me, myDone)
+        if(!done){ val t = oldX; oldX = newX; newX = t } // swap arrays
+      }
+      // worker 0 sets result to final result
+      if(me == 0) result = newX
+    }
+\end{scala}
+
+    %% def worker(start: Int, end: Int) = thread{
+    %%   var oldX = x0; var newX = x1; var done = false
+    %%   while(!done){
+    %%     var myDone = true
+    %%     for(i <- start until end){
+    %%       newX(i) = update(a, b, oldX, i, n)
+    %%       myDone &&= Math.abs(oldX(i)-newX(i)) < Epsilon
+    %%     }
+    %%     done = combBarrier.sync(myDone)
+    %%     if(!done){ val t = oldX; oldX = newX; newX = t } // swap references
+    %%   }
+    %%   // worker 0 sets result to final result
+    %%   if(start == 0) result = newX
+    %% }
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Workers}
+
+Note that all workers use the same arrays for |oldX| and |newX| on each round,
+because of the use of the barrier synchronisation.  This avoids races. 
+
+Also one worker is responsible for writing the final value of |newX| into
+|result|, so the |solve| function can return it.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Testing}
+
+We can test the concurrent version by comparing its results against those for
+the sequential version.
+
+\heading{Experimental results}
+
+For small values of $n$, the sequential version is faster: the overheads of
+the synchronisation outweigh the benefits of parallelisation.  But for larger
+values of $n$, the concurrent version is faster.
+\end{slide}
+
+%%%%%
+
+\begin{selfnote}
+The computation time for each round is $\Theta(n^2)$ for the sequential
+version, or $\Theta(n^2/p)$ for the concurrent version.  But there is a
+communication time of $\Theta(n)$ for the concurrent version, to keep the
+values in the caches up to date, and this is overwhelming for small values
+of~$n$.
+\end{selfnote}
+
+%%%%%
+
+\begin{slide}
+\heading{An alternative approach}
+
+An alternative approach is to use a single array, and to split each round
+into two sub-rounds. 
+\begin{itemize}
+\item In the first sub-round, all threads read from the shared array into
+  local variables (but write no shared variables).
+
+\item In the second sub-round, all threads write to their part of the shared
+  array. 
+\end{itemize}
+%
+This requires an extra barrier synchronisation, between the two sub-rounds. 
+\end{slide}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{slide}
+\heading{A message-passing version}
+
+We can convert the shared-memory program into a message-passing program,
+with no shared variables.  Each thread has its own copy of~\SCALA{x} (and all
+threads should have the same value for this).  On each iteration, each
+worker calculates the next value of its share of~\SCALA{x}, and then
+distributes it to all other workers.  More precisely, each thread sends a
+triple:
+%
+\begin{itemize}
+\item 
+its own identity;
+
+\item
+the part of the next value of~\SCALA{x} that it has just calculated;
+
+\item
+a boolean that indicates whether it is willing to terminate.
+\end{itemize}
+%
+\begin{scala}
+type Msg = (Int, Array[Double], Boolean)
+\end{scala}
+
+We use buffered channels to pass these messages, and a |Barrier| object to
+provide synchronisation.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{The first message-passing version}
+
+\begin{scala}
+/** A concurrent implementation of Jacobian iteration, using message
+  * passing. */
+class JacobiMP0(p: Int) extends Jacobi{
+  private val barrier = new Barrier(p)
+  /** Messages are triples: worker identity, new segment of x, is that worker
+    * willing to terminate? */
+  private type Msg = (Int, Array[Double], Boolean)
+  /** Channels to send messages to workers: indexed by receiver's identity;
+    * buffered. */
+  private val toWorker = Array.fill(p)(new BuffChan[Msg](p-1))
+
+  def solve(a: Array[Array[Double]], b: Array[Double]): Array[Double] = ...
+}
+\end{scala}
+\end{slide}
+
+%%%%%
+\begin{slide}
+\heading{The {\scalashape solve} function}
+ 
+\begin{scala}
+  def solve(a: Array[Array[Double]], b: Array[Double]): Array[Double] = {
+    val n = a.length
+    require(a.forall(_.length == n) && b.length == n && n%p == 0)
+    val height = n/p // height of one strip
+    var result: Array[Double] = null // will hold final result
+
+    // Worker to handle rows [me*height .. (me+1)*height).
+    def worker(me: Int) = thread{ ... } 
+
+    // Run system
+    run(|| (for(i <- 0 until p) yield worker(i)))
+    result
+  }
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{A worker}
+
+\begin{scala}
+    def worker(me: Int) = thread{
+      val start = me*height; val end = (me+1)*height; var done = false
+      val x = new Array[Double](n)
+
+      while(!done){
+        done = true
+        // newX(i) holds the new value of x(i+start)
+        val newX = new Array[Double](height)
+        // Update this section of x, storing results in newX
+        for(i <- start until end){
+          newX(i-start) = update(a, b, x, i, n)
+          done &&= Math.abs(x(i)-newX(i-start)) < Epsilon
+        }
+        ...
+      }
+      if(me == 0) result = x // copy final result  
+    } 
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{A worker}
+
+\begin{scala}
+      while(!done){
+        ...
+        // Send this section to all other threads
+        for(w <- 1 until p) toWorker((me+w)%p)!(me, newX, done)
+        // Copy newX into x
+        for(i <- 0 until height) x(start+i) = newX(i)
+        // Receive from others
+        for(k <- 0 until p-1){
+          val (him, hisX, hisDone) = toWorker(me)?()
+          for(i <- 0 until height) x(him*height+i) = hisX(i)
+          done &&= hisDone
+        }
+        // Synchronise for end of round
+        barrier.sync(me)
+      }
+      if(me == 0) result = x // copy final result      
+\end{scala}
+\end{slide}
+
+
+%%%%%
+
+\begin{slide}
+\heading{Barrier synchronisation}
+
+The  barrier synchronisation is necessary.
+
+Suppose one thread is really fast.  It could complete one round, do its
+calculations for the next round, and send its value of \SCALA{newX} while some
+slow thread is still doing some sends from the previous round.
+
+Hence a third thread could receive the fast thread's value for the next
+round before it receives the slow thread's value for the current round.
+\end{slide}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{slide}
+\heading{A more efficient version}
+
+The previous version is a bit inefficient, since it involves copying the data
+that is received into~\SCALA{x}.  Thus each round takes time $O(\sm n)$.
+
+We can replace \SCALA{x}, in each worker, by a two-dimensional array
+\SCALA{xs}:
+%
+\begin{scala}
+val xs = Array.ofDim[Double](p, height)
+\end{scala}
+%
+Each row of~|xs| corresponds to the segment operated on by a particular
+worker.  The array~|xs| represents the array |x| formed by concatenating the
+rows of |xs|.  That is, we have the abstraction:
+\[
+\sm{x} = \sm{xs.flatten}.
+\]
+
+Each worker will receive a block of data from another worker, and insert it
+into its~|xs| with a single update.  Then each round takes time $O(\sm{height}
++ \sm{p})$.
+
+This makes the code about 45\% faster.  See website for the code.
+\end{slide}
+
+%%%%%
+
+%% \begin{slide}
+%% \heading{A more efficient version}
+
+%% Thread \SCALA{worker(k)} will work on the row \SCALA{xs(k)}.  
+%% \SCALA{xs(k)(i)} holds the value previously stored in \SCALA{x(k*height+i)}.
+
+%% This row will be sent to all other workers, who will copy it into their
+%% own~|xs|.  This copying can be done by copying references.
+
+%% Note that it's important for each worker to set its value of \SCALA{newX} to
+%% be a \emph{new} array on each iteration.  If it re-uses the same array, other
+%% workers will be using references to that array (which were passed on the
+%% previous round), and so there will be race conditions.
+%% \end{slide}
+
+%% %%%%%
+
+%% \begin{slide}
+%% \heading{A worker}
+
+%% \begin{scala}
+%%     def worker(me: Int) = thread{
+%%       val start = me*height; val end = (me+1)*height; var done = false
+%%       val xs = Array.ofDim[Double](p,height)
+%%       // xs represents the vector x = xs.flatten
+
+%%       while(!done){ ... }
+%%       if(me == 0) result = xs.flatten // copy final result
+%%     } // end of worker
+%% \end{scala}
+%% \end{slide}    
+
+%% %%%%%
+
+%% \begin{slide}
+%% \heading{A worker}
+
+%% \begin{scala}
+%%       while(!done){
+%%         done = true
+%%         // newX(i) holds the new value of x(i+start) = xs(me)(i)
+%%         val newX = new Array[Double](height)
+%%         // Update this section of x, storing results in newX
+%%         for(i1 <- 0 until height){
+%%           val i = start+i1
+%%           var sum = 0.0
+%%           for(k <- 0 until p; j1 <- 0 until height){
+%%             val j = k*height+j1; if(j != i) sum += a(i)(j)*xs(k)(j1)
+%%           }
+%%           newX(i1) = (b(i)-sum) / a(i)(i)
+%%           done &&= Math.abs(xs(me)(i1)-newX(i1)) < Epsilon
+%%         }
+%%         ...
+%%       }
+%% \end{scala}
+%% \end{slide}    
+
+%%%%%
+
+%% \begin{slide}
+%% \heading{A worker}
+
+%% \begin{scala}
+%%       while(!done){
+%%         ...
+%%         // Send this section to all other threads
+%%         for(w <- 1 until p) toWorker((me+w)%p)!(me, newX, done)
+%%         // Copy newX into x
+%%         xs(me) = newX
+%%         // Receive from others
+%%         for(k <- 0 until p-1){
+%%           val (him, hisX, hisDone) = toWorker(me)?()
+%%           xs(him) = hisX; done &&= hisDone
+%%         }
+%%         // Synchronise for end of round
+%%         barrier.sync
+%%       }
+%% \end{scala}
+%% \end{slide}    
+
+
+%% \begin{slide}
+%% \heading{Experimental results}
+
+%% Here are some experimental results, with $n = 12800$, and with 20 workers
+%% on a 10-processor machine with hyperthreading (results give mean times and 95\% confidence intervals).
+%% %
+%% \begin{center}
+%% \begin{tabular}{ll}
+%% shared variables &	770$\pm$12ms \\
+%% first message-passing &	745$\pm$18ms \\
+%% second message-passing & 396$\pm$18ms
+%% \end{tabular}
+%% \end{center}
+
+%% Note how avoiding the copying makes the second message-passing version about
+%% 45\% faster than the first message-passing version. 
+
+%% I think the shared-variable version is slower because of the use of shared
+%% variables.  I suspect values are being re-read from main memory, rather than
+%% using values in caches, in case they have been updated by other threads.
+%% \end{slide}

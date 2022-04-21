@@ -1,0 +1,743 @@
+\documentclass[notes,color]{sepslide0}
+\usepackage{graphicx}
+\usepackage[overheads]{mysepslides}
+\usepackage{tech,graphicx,url,tikz,scalalistings}
+
+\title{Alternation} 
+\author{Gavin Lowe \\ with thanks to Bernard Sufrin}
+
+% \everymath{\color{Plum}}
+
+\def\scalacolour{\color{violet}}
+
+\begin{document}
+
+\begin{slide}
+  
+  \Title
+
+\end{slide}
+
+%%%%%
+
+
+\begin{slide}
+\heading{The need for alternation}
+
+At present, we can write processes that try to send  or receive on a
+\emph{single} channel.
+
+However, it's often useful to be able to try to send or receive on either of
+two or more channels: the \SCALA{alt} construct does that for us.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{\protect\SCALA{alt}: simple syntax}
+
+The process
+%
+\begin{scala}
+alt( 
+  inport£$_1$£ =?=> {f£$_1$£}
+  | ...
+  | inport£$_n$£ =?=> {f£$_n$£}
+)
+\end{scala}
+%
+waits until one of the input ports \SCALA{inport}$_1$, \ldots,
+\SCALA{inport}$_n$ is ready to communicate, reads a value~$v$ from the port, and
+applies the relevant function |f|$_i$ to~$v$.
+
+%% A construct of the form \SCALA{inport =?=> \{f\}} is referred to as an
+%% \emph{event}.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Example: a simple tagger}
+
+The following process repeatedly inputs from one of two input ports, tags the
+value input, and outputs it.
+%
+\begin{scala}
+def tagger[T](l: ?[T], r: ?[T], out: ![(Int, T)]) = thread{
+  repeat{
+    alt ( l =?=> { x => out!(0, x) }
+        | r =?=> { x => out!(1, x) }
+    )
+  }
+  l.close; r.close; out.endOfStream
+}
+\end{scala}
+
+Exercise: design a corresponding de-tagger.
+\end{slide}
+
+
+%%%%%
+
+\begin{slide}
+\heading{Guards}
+
+It's sometimes useful to specify that a particular inport should be considered
+only if some condition, or \emph{guard}, is true.
+
+In the  process
+%
+\begin{scala}
+alt( guard£$_1$£ && inport£$_1$£ =?=> {f£$_1$£}
+   | ...
+   | guard£$_n$£ && inport£$_n$£ =?=> {f£$_n$£}
+   )
+\end{scala}
+%
+a communication on each |inport|$_i$ is possible only if the corresponding
+|guard|$_i$ is true.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Guards}
+
+Each guard is evaluated once, and should not have side effects.
+
+If a guard evaluates to true and the inport is open, the corresponding
+branch is \emph{feasible}.  If no branch is feasible, the |alt| throws
+an |AltAbort| exception (a subclass of \SCALA{Stopped}).
+
+If a branch is feasible and the inport is available for communication, then
+the branch is \emph{ready}.
+
+The |alt| waits until a branch is ready, and receives from the inport.  If
+several are ready, it chooses between them.  If all the branches become
+infeasible (because of channels being closed), the |alt| throws an |AltAbort|
+exception.
+
+\SCALA{inport =?=> ...} is equivalent to \SCALA{true && inport =?=> ...}.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{\scalashape serve}
+
+Using an \SCALA{alt} inside a \SCALA{repeat} is very common.  The construct
+ %
+\begin{scala}
+repeat{ 
+  alt( g£$_1$£ && p£$_1$£ =?=> {f£$_1$£} | ... | g£$_n$£ && p£$_n$£ =?=> {f£$_n$£} ) 
+}
+\end{scala}
+%
+will terminate when, for every branch, either the guard is false or
+the port is closed (or one of the |f|$_i$ throws a |Stopped| exception).
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{\scalashape serve}
+
+The construct 
+%
+\begin{scala}
+serve( g£$_1$£ && p£$_1$£ =?=> {f£$_1$£} | ... | g£$_n$£ && p£$_n$£ =?=> {f£$_n$£} )
+\end{scala}
+%
+is very similar to a corresponding |repeat{ alt(...) }| construct, except the
+latter creates a new \SCALA{alt} object on each iteration, whereas the
+|serve| creates a single \SCALA{alt} object which is used repeatedly.
+
+Both constructs evaluate each guard expression~|g|$_i$ and each port
+expression |p|$_i$  on each iteration.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Fairness}
+
+The implementation of an |alt| tests whether its branches are ready in the order
+given.  In the |repeat{ alt(...) }| construct, a new |alt| object is created
+for each iteration, so if the first branch is repeatedly ready, it will be
+repeatedly selected, and the other branches will be starved.
+
+By contrast, the |serve| aims to be fair.  It uses the same |alt| on each
+iteration.  It remembers which branch was selected on the previous iteration,
+and tests whether branches are ready starting from the following one (looping
+round).
+
+This means that if a particular branch is continuously ready, and the |serve|
+performs enough iterations, then that branch will eventually be selected.  We
+say that the |serve| is \emph{fair} to each branch.
+\end{slide}
+
+
+%%%%%
+
+\begin{slide}
+\heading{\protect\SCALA{serve}}
+
+Here's the tagger again.
+%
+\begin{scala}
+def tagger[T](l: ?[T], r: ?[T], out: ![(Int, T)]) = thread{
+  serve( l =?=> { x => out!(0, x) }
+       | r =?=> { x => out!(1, x) }
+  )
+  l.close; r.close; out.endOfStream
+}
+\end{scala}
+%
+Note that this is fair to its two input ports. 
+
+The |serve| loop terminates when either both |l| and~|r| are closed, or |out|
+is closed. 
+\end{slide}
+
+
+%%%%%
+
+\begin{slide}
+\heading{About fairness}
+
+Fairness crops up in a number of scenarios in concurrent programming.
+
+A typical fairness property is that if a particular option is continually
+logically possible, then it eventually happens.  Fairness for an |alt|
+construct means that if a particular branch is continually ready, and the
+|alt| performs enough iterations, then eventually that branch is selected.
+
+Note that ``fair'' doesn't necessarily mean equable: a construct that chooses
+option~$A$ 99\% of the time, and chooses option~$B$ 1\% of the time is fair
+but not equable.  
+
+In some scenarios, achieving fairness has a performance overhead.  One should
+consider whether or not fairness is desirable.  Often one can achieve higher
+throughput without fairness.
+\end{slide}
+
+%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{slide}
+\heading{The Dining Philosophers}
+
+The story:
+\begin{itemize}
+\item Five philosophers spend their lives thinking and eating.
+
+\item 
+They share a common dining room, which has a circular table with five chairs
+around it, a plate in front of each chair, and a big bowl of spaghetti in the
+middle.
+
+\item 
+There are  five forks, placed between the five plates at the table.
+
+\item 
+After thinking for a while a philosopher gets hungry, picks up the fork to her
+left as soon as it's available, then picks up the fork to her right as soon as
+it's available.
+
+\item 
+Once she has two forks, she serves herself and spends some time eating.
+
+\item 
+Then she puts the forks down and does some more thinking.
+\end{itemize}
+\end{slide}
+
+% %%%%%
+
+\begin{slide}
+\heading{The Dining Philosophers}
+
+If all five philosophers get hungry at about the same time and pick up their
+left fork, then they all starve!
+
+How can we simulate this?
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Dining Philosophers: the basics}
+
+\begin{scala}
+import ox.scl._
+
+/** Simulation of the Dining Philosophers example. */
+object Phils{
+  val N = 5 // Number of philosophers
+
+  // Simulate basic actions
+  def eat = Thread.sleep(500)
+  def think = Thread.sleep(scala.util.Random.nextInt(900))
+  def pause = Thread.sleep(500)
+  ...
+}
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Picking and dropping philosopher}
+
+Each philosopher will send ``pick'' and ``drop'' messages to her forks, which
+we simulate using the following values.
+%
+\begin{scala}
+  type Command = Boolean
+  val Pick = true; val Drop = false
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{A philosopher}
+
+We provide each philosopher with two channels, to her left- and right-hand
+fork, respectively.  
+\begin{scala}
+  /** A single philosopher. */
+  def phil(me: Int, left: ![Command], right: ![Command]) = thread("Phil"+me){
+    repeat{
+      think
+      println(me+" sits"); pause
+      left!Pick; println(me+" picks up left fork"); pause
+      right!Pick; println(me+" picks up right fork"); pause
+      println(me+" eats"); eat
+      left!Drop; pause; right!Drop; pause
+      println(me+" leaves")
+    }
+  }
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{selfnote}
+The syntax 
+\begin{scala}
+thread(name){ <code> }
+\end{scala}
+Creates a process with name \SCALA{name}.
+\end{selfnote}
+
+%%%%%
+
+\begin{slide}
+\heading{A fork}
+
+\begin{scala}
+  /** A single fork. */
+  def fork(me: Int, left: ?[Command], right: ?[Command]) = thread("Fork"+me){
+    serve(
+      left =?=> { 
+        x => assert(x == Pick); val y = left?(); assert(y == Drop) 
+      }
+      | 
+      right =?=> { 
+        x => assert(x == Pick); val y = right?(); assert(y == Drop) 
+      }
+    )
+  }
+\end{scala}
+\end{slide}
+
+%%%%%
+
+
+\begin{slide}
+\heading{Putting it together}
+
+\begin{scala}
+  /** The complete system. */
+  def system = {
+    // Channels to pick up and drop the forks:
+    val philToLeftFork, philToRightFork = Array.fill(N)(new SyncChan[Command])
+    // philToLeftFork(i) is from Phil(i) to Fork(i);
+    // philToRightFork(i) is from Phil(i) to Fork((i-1) mod N)
+    val allPhils = || ( 
+      for (i <- 0 until N) yield phil(i, philToLeftFork(i), philToRightFork(i))
+    )
+    val allForks = || ( 
+      for (i <- 0 until N) yield
+        fork(i, philToRightFork((i+1)%N), philToLeftFork(i))
+    )
+    allPhils || allForks
+  }
+
+  def main(args : Array[String]) = run(system) 
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Running the system}
+
+When we run this, sometimes it deadlocks almost immediately.
+A typical deadlocking trace is:
+%
+\begin{scala}
+1 sits,  0 sits,  4 sits,  2 sits,  1 picks up left fork
+3 sits,  0 picks up left fork,  4 picks up left fork
+2 picks up left fork,  3 picks up left fork
+\end{scala}
+%
+When it deadlocks, typing control-backslash (on Linux/Unix machines) gives the
+thread dump, which can help with debugging.  (If we have named threads, the
+thread dump will use these names.)  
+
+However, sometimes the system runs for a long time without deadlocking.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Logging}
+
+In the above, we used |println| statements so that we could understand
+what happened.  However, this style is often not convenient.
+Normally, a better way is to use logging.
+
+The class |Log| provides log objects.
+%
+A new log storing events of type~|A|, suitable for |p| threads,
+can be defined by
+\begin{scala}
+  val log = new Log[A](p)
+\end{scala}
+%
+This provides operations
+%
+\begin{itemize}
+\item |def add(me: Int, x: A)|, which adds |x| to the log,
+performed by thread~|me|;
+
+\item |def get: Array[A]|, which gets the contents of the log;
+
+\item |def toFile(fname: String = "/tmp/logFile")|, which writes the
+contents of the log to the file~|fname|.
+\end{itemize}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Using logging}
+
+\begin{scala}
+  val log = new Log[String](N)
+ 
+  /** A single philosopher. */
+  def phil(me: Int, left: ![Command], right: ![Command]) = thread("Phil"+me){
+    repeat{
+      think
+      log.add(me, me+" sits"); pause
+      left!Pick; log.add(me, me+" picks up left fork"); pause
+      right!Pick; log.add(me, me+" picks up right fork"); pause
+      log.add(me, me+" eats"); eat
+      left!Drop; pause; right!Drop; pause
+      log.add(me, me+" leaves")
+      if(me == 0) print(".")
+    }
+  }
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Using logging}
+
+In many scenarios, when the system terminates, we can either write the
+log to a file, or analyse the log using some code.
+
+However, this won't work when the system deadlocks.  Instead, we need
+to arrange for the log to write itself to a file when the user
+interrupts the program.  This can be done with the
+|writeToFileOnShutdown| method:
+\begin{scala}
+  def main(args : Array[String]) = {
+    log.writeToFileOnShutdown("philsLog.txt")
+    run(system)
+  }
+\end{scala}
+\end{slide}
+
+
+%%%%%
+
+\begin{slide}
+\heading{Logging}
+
+Internally, each thread uses its own thread-local log, to avoid race
+conditions, and for efficiency.  In the thread-local logs, each value is
+stored together with a timestamp (more precisely, the time elapsed since the
+|Log| object was created, to avoid problems with timestamp wrap-around).
+
+The |get| operation merges the thread-local logs according to
+timestamps.
+\end{slide}
+
+%%%%%
+
+
+\begin{slide}
+\heading{Logging}
+
+Note that using timestamps in this way assumes that the clocks are loosely
+synchronised across cores, and that the granularity of the clocks is
+sufficiently fine, so that if one |add| event logically happens before
+another, the former receives a strictly smaller timestamp.
+
+The above assumption seems to be sound in Linux, but not in Windows.  If you
+must use Windows, the  class |SharedLog| provides the same
+interface.  However, it will give worse performance, and this might affect the
+likelihood of detecting bugs. 
+\end{slide}
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{slide}
+\heading{\protect\SCALA{alt}s versus shared channels}
+
+Sometimes a shared channel can produce the same effect as an \SCALA{alt}.
+
+For example, consider a variant of the dining philosophers where each
+philosopher has channels \SCALA{pick} and \SCALA{drop} for each of its
+forks, and where each fork has single \SCALA{pick} and \SCALA{drop}
+channels, on which it can receive messages from either of the adjacent
+philosophers:
+%
+\begin{scala}
+  def Fork(me: Int, pick: ?[Unit], drop: ?[Unit]) = thread("Fork"+me){
+    repeat{ pick?(); drop?() }
+  }
+\end{scala}
+%
+%% Note that the \SCALA{pick} communication could be from either neighbouring
+%% philosopher, so these need to be |ManyOne| channels.
+Note that we need separate |pick| and |drop| channels.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Practical 2: Dining Philosophers}
+
+The second practical asks you to investigate various ways to avoid such
+deadlocks. 
+%
+\begin{itemize}
+\item Make one philosopher right-handed, rather than all being left-handed; 
+
+\item Using a butler process, that allows at most $N-1$ philosophers to sit at
+a time;
+
+\item Using timeouts: if a philosopher fails to get a fork within a reasonable
+amount of time, she gives up, and tries again later.
+\end{itemize}
+\end{slide}
+
+
+%%%%%
+
+\begin{slide}
+\heading{\protect\SCALA{alt}s with outports}
+
+It is also possible to use an output port within an \SCALA{alt}:
+%
+\begin{scala}
+bool && outport =!=> { expression }
+\end{scala}
+If |bool| is true, when the |outport| is ready for communication, |expression|
+is evaluated and the result sent.
+
+Sometimes it's necessary to do something \emph{after} the value has been sent,
+using a continuation.
+%
+\begin{scala}
+bool && outport =!=> { expression } ==> { command }
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Example: \protect\SCALA{tee} again}
+
+\begin{scala}
+def tee[T](in: ?[T], out1: ![T], out2: ![T]) = thread{
+  repeat{ 
+    val v = in?()
+    alt( out1 =!=> { v } ==> { out2!v }
+       | out2 =!=> { v } ==> { out1!v }
+    )
+  }
+}
+\end{scala}
+%
+Note how this can output to \SCALA{out1} and \SCALA{out2} in either order.
+\end{slide}
+
+%%%%%%
+
+\begin{slide}
+\heading{A two-place buffer}
+
+Inports and outports can be mixed within an \SCALA{alt}.
+
+The following process copies data from |in| to |out|, and can hold up to two
+pieces of data at a time: it is a two-place buffer.
+%
+\begin{scala}  
+  /** Two place buffer. */
+  def buff2[T](in: ?[T], out: ![T]): Unit = {
+    val x = in?(); buff2full(in, out, x)
+  }
+  /** Two place buffer holding x. */
+  def buff2full[T](in: ?[T], out: ![T], x: T): Unit = {
+    alt(
+      out =!=> { x } ==> { buff2(in, out) }
+      | in =?=> { y => out!x; buff2full(in, out, y) }
+    )
+  }  
+\end{scala}
+
+%% /** Empty two-place buffer. */
+%% def Buff2[T](in: ?[T], out: ![T]): ThreadGroup = thread{
+%%   val x = in?(); run(Buff2a(in, out, x))
+%% }
+%% /** Two-place buffer holding x. */
+%% def Buff2a[T](in: ?[T], out: ![T], x: T): ThreadGroup = thread{
+%%   alt( out =!=> { x } ==> { run(Buff2(in, out)) }
+%%      | in =?=> { y => out!x; run(Buff2a(in, out, y)) }
+%%   )
+%% }  
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{A two place buffer}
+
+Here's an alternative definition.  \SCALA{empty} records whether the buffer is
+empty.  When $\sm{empty} = \sm{false}$,\, \SCALA{x} stores the next value to be
+output. 
+%
+\begin{scala}
+  def buff2Alt[T](in: ?[T], out: ![T]) = {
+    var x: T = null.asInstanceOf[T]  // contents, possibly invalid
+    var empty = true // is the buffer empty?
+    serve(
+      !empty && out =!=> { empty = true; x }
+      | empty && in =?=> { v => x = v; empty = false }
+      | !empty && in =?=> { v => out!x; x = v }
+    )
+  }
+\end{scala}
+%% \begin{scala}
+%% def Buff2Alt[T](in: ?[T], out: ![T]) = thread{
+%%   var x = in?(); var empty = false
+%%   serve(
+%%     (!empty && out) =!=> { empty = true; x }
+%%     | (empty && in) =?=> { v => x = v; empty = false }
+%%     | (!empty && in) =?=> { v => out!x; x = v }
+%%   )
+%% }
+%
+The last two branches could be merged, and an \SCALA{if} statement used. 
+\begin{scala}
+    | in =?=> { v => if(empty){ x = v; empty = false } else {out!x; x = v } }
+\end{scala}
+\end{slide}
+
+%%%%%
+
+
+\begin{slide}
+\heading{Restrictions}
+
+\begin{itemize}
+%% \item
+%% An |alt| may not have two simultaneously enabled branches using the
+%% same port.
+
+%% \item An |alt| may not use a port that is shared, either with another |alt| or
+%% with a non-alt read or write.
+
+\item A port may not be simultaneously feasible in two |alt|s or |serve|s.
+  (But it may be feasible in an |alt|/|serve|, and also used by a thread with
+  a simple send or receive.)
+
+\item Both ports of a channel may not simultaneously be feasible in |alt|s or
+  |serve|s.
+\end{itemize}
+%
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Generalised \protect\SCALA{alt}s}
+
+\SCALA{alt}s (and \SCALA{serve}s) can be constructed from collections of
+branches.
+
+Here is a generalization of the tagger:
+%
+\begin{scala}
+def tagger[T](ins: List[?[T]], out: ![(Int, T)]) = thread{
+  serve ( 
+    | (for (i <- 0 until ins.length) yield ins(i) =?=> { x => out!(i, x) })
+  )
+  for (in <- ins) in.close
+  out.endOfStream
+}
+\end{scala}
+
+This will terminate when all input channels are closed, or \SCALA{out} is
+closed. 
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Summary}
+
+\begin{itemize}
+\item
+\SCALA{alt}s;
+
+\item
+Syntax: using inports and outports; guards; \SCALA{serve}; generalised |alt|s;
+% timeouts; \SCALA{orelse}; \SCALA{prialt} (and \SCALA{priserve})
+
+\item
+Example: dining philosophers;
+
+\item
+Logging;
+
+%% \item
+%% \SCALA{alt}s versus \SCALA{ManyOne} channels;
+
+\item
+Restrictions on use of \SCALA{alt}s. 
+\end{itemize}
+\end{slide}
+
+\end{document}

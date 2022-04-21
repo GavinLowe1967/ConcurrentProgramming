@@ -1,0 +1,209 @@
+
+
+
+
+%%% I don't like how this is set out.  I don't think the first version is
+%%% sound.  There's a better version in
+%%% /users/gavinl/Teaching/CP/Scala/ReadersWriters.
+
+% {\advance\slideheight by 3mm
+\begin{slide}
+\heading{The readers and writers problem using semaphores}
+
+We will now consider an implementation of the readers and writers problem
+using semaphores. 
+
+As before, we keep track of the number of readers and writers in the
+critical section.
+\begin{scala}
+  /** Number of readers in the CS. */
+  private var readers = 0 
+
+  /** Number of writers in the CS. */
+  private var writers = 0 
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{The readers and writers problem using semaphores}
+
+We will use the technique of passing the baton.  We will have separate
+semaphores for signalling (passing the baton) to readers and writers.  A
+signal on these semaphores will indicate that a waiting thread can enter. 
+
+\begin{scala}
+  /** Semaphore to signal that reader can enter.
+    * Indicates that writers == 0. */
+  private val readerEntry = new SignallingSemaphore
+
+  /** Semaphore to signal that writer can enter.
+    * Indicates that writers == 0 && readers == 0. */
+  private val writerEntry = new SignallingSemaphore
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{The readers and writers problem using semaphores}
+
+We need to keep track of how many readers and writers are waiting, so an
+exiting thread can know to whom to pass the baton.  We need a mutex semaphore
+to protect the object variables.
+%
+\begin{scala}
+  /** Number of readers waiting to enter. */
+  private var readersWaiting = 0
+
+  /** Number of writers waiting. */
+  private var writersWaiting = 0
+
+  /** Semaphore to protect shared variables. */
+  private val mutex = new MutexSemaphore
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{The reader entering}
+
+If a reader has to wait, when it is awoken, it signals to the next reader if
+there is one. 
+%
+\begin{scala}
+  def readerEnter = {
+    mutex.down
+    if(writers == 0){ // go straight in
+      readers += 1; mutex.up
+    }
+    else{ // have to wait
+      readersWaiting += 1; mutex.up
+      readerEntry.down                         // wait to be released (1)
+      assert(writers == 0); readersWaiting -= 1; readers += 1
+      if(readersWaiting > 0) readerEntry.up // signal to next reader at (1)
+      else mutex.up
+    }
+  }
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{The writer entering}
+
+\begin{scala}
+  def writerEnter = {
+    mutex.down
+    if(readers == 0 && writers == 0){ // go straight in
+      writers = 1; mutex.up
+    }
+    else{ // have to wait
+      writersWaiting += 1; mutex.up
+      writerEntry.down              // wait to be released (2)
+      writersWaiting -= 1
+      assert(readers == 0 && writers == 0); writers = 1
+      mutex.up
+    }
+  }
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Readers and writers leaving}
+
+A leaving reader can signal to a waiting writer.  A leaving writer can signal
+to either a waiting reader or waiting writer.
+%
+\begin{scala}
+  def readerLeave = {
+    mutex.down
+    readers -= 1; assert(readersWaiting == 0)
+    if(readers == 0 && writersWaiting > 0)
+      writerEntry.up                               // signal to writer at (2)
+    else mutex.up
+  }
+
+  def writerLeave = {
+    mutex.down
+    writers = 0
+    if(readersWaiting > 0) readerEntry.up        // signal to reader at (1)
+    else if(writersWaiting > 0) writerEntry.up   // signal to writer at (2)
+    else mutex.up
+  }
+\end{scala}
+\end{slide}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+
+\begin{slide}
+\heading{Starvation}
+
+The previous version could cause a writer to be starved, if readers
+continually enter and leave the critical section such that there is always at
+least one reader.  To avoid this, we force a new reader to wait if there is
+already a waiting writer.
+
+\begin{scala}
+  def readerEnter = {
+    mutex.down
+    if(writers == 0 && writersWaiting == 0){ // go straight in
+      readers += 1; mutex.up
+    }
+    else{ ... } // as before
+  }
+\end{scala}
+
+The assertion in |readerLeave| needs to be changed to 
+\begin{scala}
+  assert(readersWaiting == 0 || writersWaiting > 0)
+\end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Starvation}
+
+On the assumption that no thread remains in the critical section for ever,
+this ensures that writers collectively are not starved.  Once a writer starts
+waiting, no more readers will enter the CS; eventually all readers will leave
+the CS; and a writer will receive a signal.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Fairness}
+
+The implementation is potentially unfair to an \emph{individual} writer.  If
+repeatedly several writers are waiting, a particular writer may never receive
+the signal.  Likewise, a thread may never receive a signal on |mutex|
+(although this is less likely). 
+
+The implementation of a semaphore does not guarantee to be fair to each
+individual waiting thread, although in practice it might be.
+
+%% The semaphore implementation includes the option of providing fairness to each
+%% thread waiting on it.
+%% %
+%% \begin{scala}
+%%   private val mutex = MutexSemaphore(fair = true)
+%%   private val readerEntry = SignallingSemaphore(fair = true)
+%%   private val writerEntry = SignallingSemaphore(fair = true)
+%% \end{scala}
+
+%% ``Fair'' here means that if a thread~$t$ is waiting on semaphore~$s$, and an
+%% infinite number of |up|s are performed on~$s$, then $t$ will receive one of
+%% these signals.
+%% %
+%% Note that this is implied by the stronger property of first-in first-out.
+%% %
+%% Note also that there is a performance overhead associated with fairness.
+\end{slide}
+
