@@ -48,6 +48,23 @@ class SignallingSemaphore extends Semaphore(false)
 %%%%%
 
 \begin{slide}
+\heading{Semaphores versus conditions}
+
+Semaphores and conditions are similar, in that each provides a signalling
+mechanism.
+
+The main difference is that a semaphore has a state: it is either up or down.
+This means that if an |up| is performed before a thread is waiting, then the
+signal is not lost.  
+
+By contrast, if a signal is performed on a condition when
+no thread is waiting, then the signal is lost: in such cases, it is often
+appropriate to use the condition in combination with a boolean variable. 
+\end{slide}
+
+%%%%%
+
+\begin{slide}
 \heading{Synchronising using semaphores}
 
 Two processes can synchronise using a pair of signalling semaphores: each
@@ -232,6 +249,7 @@ current thread is in the best position to decide which thread can run next.
 \end{slide}
 
 %%%%%
+
 
 \begin{slide}
 \heading{Barrier synchronisation}
@@ -591,4 +609,19 @@ class MutexQueue{
     else mutex.up
   }
 \end{scala}
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{Selective passing the baton}
+
+This technique can be used in a number of scenarios to allow the current
+thread to selectively pass the baton to a particular thread: each thread that
+has to wait, creates a new semaphore, stores it, and waits on it.
+
+Sometimes it is necessary to store some extra information with each such
+semaphore, so that the current thread can choose between the waiting threads.
+This choice should be made so that the thread that receives the signal can
+then do something useful. 
 \end{slide}

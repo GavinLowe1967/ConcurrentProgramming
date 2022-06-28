@@ -36,7 +36,7 @@ class Slot[T]{
   private var value = null.asInstanceOf[T] // current or previous item
   private var filled = false                 // if value valid?
 
-  def put(v :T) = {
+  def put(v: T) = {
     while(filled){  } // spin
     value = v; filled = true
   }
@@ -87,6 +87,8 @@ unnecesarily.  This mechanism won't scale well, since if there are many
 processes, they will be competing for access to the (limited) processors, and
 also competing for use of the memory bus.
 
+\emph{Do not use busy waiting.}
+
 % \item
 % Both processes need access to the object simultaneously, so we can't turn it
 % into a monitor.  This doesn't matter in this case, but it would in others.
@@ -116,7 +118,7 @@ class Slot[T]{
   private var value = null.asInstanceOf[T] // current or previous item
   private var filled = false                 // if value valid?
 
-  def put(v:T) = synchronized{
+  def put(v: T) = synchronized{
     while(filled) wait() // wait for the slot to be emptied
     value = v; filled = true
     notify()  // notify the consumer
@@ -221,6 +223,23 @@ might have run before the awoken thread, and so made the condition false.
 % in the implementation of Java --- a so-called \emph{spurious wakeup}.  These
 % occur rarely in practice, but you should still guard against them, for example
 % by using the above form of waiting.
+\end{slide}
+
+%%%%%
+
+\begin{slide}
+\heading{{\scalashape wait} and {\scalashape notify}}
+
+When a thread performs |wait| or |notify|, it must be inside a corresponding
+|synchronized| block on the same object, either the current object (|this|):
+\begin{scala}
+synchronized{ ... wait() ... notify() ... }
+\end{scala}
+%
+or some other reference object~|o|:
+\begin{scala}
+o.synchronized{ ... o.wait() ... o.notify() ... }
+\end{scala}
 \end{slide}
 
 %%%%%

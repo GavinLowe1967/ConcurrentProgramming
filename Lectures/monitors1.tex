@@ -89,7 +89,8 @@ The way to ensure mutual exclusion within a Scala object  is via the
 If |o| is a reference object and \SCALA{e} is an expression, then
 \SCALA{o.synchronized\{ e \}} acts much like \SCALA{e}, except that at most
 one thread can be active within the \SCALA{synchronized} expressions of the
-monitor~|o| at any time. 
+monitor~|o| at any time.  Note that |o| must be a reference object (a subclass
+of |AnyRef|), not, for example, an |Int|. 
 
 If a thread tries to execute a \SCALA{synchronized}
 expression while another thread is active within the monitor, then the former

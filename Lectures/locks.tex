@@ -78,6 +78,9 @@ computation under mutual exclusion.
     acquire; try{comp} finally{release}
   } 
 \end{scala}
+%
+The |finally| clause ensures that the lock is released after the calculation
+of the value that is returned.
 \end{slide}
 
 %%%%%
