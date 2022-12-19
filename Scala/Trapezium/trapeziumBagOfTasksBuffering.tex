@@ -1,0 +1,66 @@
+\documentclass[a4paper]{article}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.10}
+\begin{document}
+
+\begin{tikzpicture}
+\begin{axis}[
+  title = Timing experiment on the numerical integration example,
+  ylabel = Time (ms),
+  legend pos = north east,
+  height = 0.98\textheight,
+  width = 0.98\textwidth,
+  scaled ticks = false,
+  title = Experiment on the benefits of buffering,
+  xlabel = Amount of buffering,
+  xtick = data,
+  symbolic x coords={0,1,2,4,8,16}
+]
+\addplot+[error bars/.cd, y dir=both,y explicit] coordinates {
+  (0,7775.7388585) +- (0,1191.9085320017311)
+  (1,7410.697126) +- (0,2763.700830166456)
+  (2,7098.4314675) +- (0,980.616673727777)
+  (4,7306.4826325) +- (0,1308.3064388054488)
+  (8,7087.6105705) +- (0,322.66265050531547)
+  (16,7119.260042) +- (0,817.282472613042)
+};
+\addlegendentry{$2^{2}$ tasks per worker}
+\addplot+[error bars/.cd, y dir=both,y explicit] coordinates {
+  (0,5433.270806) +- (0,111.45599368662697)
+  (1,5493.956088) +- (0,572.3610008481903)
+  (2,5626.0952055) +- (0,751.8031244252045)
+  (4,5537.6900785) +- (0,165.56388590632616)
+  (8,5415.7558445) +- (0,762.8700126679357)
+  (16,5412.253508) +- (0,973.9424284345205)
+};
+\addlegendentry{$2^{4}$ tasks per worker}
+\addplot+[error bars/.cd, y dir=both,y explicit] coordinates {
+  (0,5642.207926) +- (0,2597.5589580700093)
+  (1,5909.556895) +- (0,248.15758961418368)
+  (2,5797.387279) +- (0,752.5942190796773)
+  (4,5470.734117) +- (0,355.4473331526477)
+  (8,5782.8415045) +- (0,4406.992237917072)
+  (16,5700.4293735) +- (0,3344.5688700911164)
+};
+\addlegendentry{$2^{6}$ tasks per worker}
+\addplot+[error bars/.cd, y dir=both,y explicit] coordinates {
+  (0,5411.781758) +- (0,103.96714726029936)
+  (1,5360.6638335) +- (0,59.03783609201184)
+  (2,5501.90724) +- (0,909.3666375184931)
+  (4,6105.582416) +- (0,3256.1199312760855)
+  (8,5691.6172325) +- (0,5339.970408933972)
+  (16,5427.0140235) +- (0,22.366903575237288)
+};
+\addlegendentry{$2^{8}$ tasks per worker}
+\addplot+[error bars/.cd, y dir=both,y explicit] coordinates {
+  (0,5534.7583015) +- (0,123.97139561230654)
+  (1,5714.2022315) +- (0,3365.802831282036)
+  (2,5642.0854305) +- (0,1257.4063359518195)
+  (4,5734.831326) +- (0,3853.8359729058366)
+  (8,5812.372289) +- (0,2256.468238486834)
+  (16,5444.6665495) +- (0,1390.6402815689523)
+};
+\addlegendentry{$2^{10}$ tasks per worker}
+\end{axis}
+\end{tikzpicture}
+\end{document}

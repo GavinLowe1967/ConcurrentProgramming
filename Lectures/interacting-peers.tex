@@ -108,30 +108,25 @@ and two children.
 \begin{slide}
 \heading{The running example}
 
-We will illustrate the patterns with a simple example: at the start, each
-node holds an integer; at the end, each node should hold the minimum and
-maximum of all those integers.
+We will illustrate the patterns with a simple example: at the start, each node
+holds an integer; at the end, each node should hold the sum of all those
+integers.
 
 For each pattern, we will implement objects implementing the following trait. 
 \begin{scala}
-/** The trait specifying the various min-max examples.
+/** The trait specifying the various sum examples.
   * Each thread calls apply, passing in its value, and gets back the overall
-  * minimum and maximum. */
-trait MinMax{
-  type IntPair = (Int, Int)
-
-  /** Submit value, and receive back overall minimum and maximum. 
+  * sum. */
+trait Sum{
+  /** Submit value, and receive back overall sum. 
     * @param me the identity of this thread.
     * @param x the value submitted. */
-  def apply(me: Int, x: Int): IntPair
+  def apply(me: Int, x: Int): Int
 }
 \end{scala}
 \end{slide}
 
 %%%%%
-%%%%%
-
-
 
 \begin{slide}
 \heading{Reasoning about patterns}
@@ -158,20 +153,19 @@ We will be interested in identifying the maximum length chain.
 \heading{Centralised pattern}
 
 In this protocol, each client node sends its value to a central node, which
-calculates the minimum and maximum, and sends those back.
+calculates the sum, and sends the sum back.
 
 We use a single channel in each direction, which is shared by the client
 threads: 
 %
 \begin{scala}
-/** Implementation of MinMax using a controller.  The controller is the
+/** Implementation of Sum using a controller.  The controller is the
   *  thread with identity 0. */
-class Centralised(n: Int) extends MinMax{
+class Centralised(n: Int) extends Sum{
   private val toController = new BuffChan[Int](n-1 max 1)
-  private val fromController = new BuffChan[IntPair](n-1 max 1)
+  private val fromController = new BuffChan[Int](n-1 max 1)
 
-  def apply(me: Int, x: Int): IntPair = ...
-
+  def apply(me: Int, x: Int): Int = ...
 }
 \end{scala}
 \end{slide}
@@ -182,20 +176,17 @@ class Centralised(n: Int) extends MinMax{
 \heading{Centralised pattern}
 
 \begin{scala}
-  def apply(me: Int, x: Int): IntPair = {
+  def apply(me: Int, x: Int): Int = {
     if(me == 0){ // this is the controller
-      var min = x; var max = x
+      var sum = x
       // Receive values from other threads
-      for(i <- 1 until n){
-        val w = toController?()
-        if(w < min) min = w; if(w > max) max = w
-      }
-      // Distribute min and max
-      for(i <- 1 until n) fromController!(min,max)
-      (min, max)
+      for(i <- 1 until n){ val w = toController?(); sum += w }
+      // Distribute sum
+      for(i <- 1 until n) fromController!sum
+      sum
     }
     else{
-      toController!x  // submit my value
+      toController!x     // submit my value
       fromController?() // get back the result
     }
   }
@@ -211,13 +202,9 @@ Write $x_i$ for the value chosen by node~$i$.  Then during the first stage of
 the protocol, the following invariant holds for the controller:
 %
 \begin{eqnarray*}
-\sm{min} & = & 
-   \min(\set{x_0} \union 
-    \set{x_i \| 1 \le i < n \land  \mbox{node~$i$ has sent its value}}),
-\\
-\sm{max} & = & 
-   \max(\set{x_0} \union 
-   \set{x_i \| 1 \le i < n \land \mbox{node~$i$ has sent its value}}).
+\sm{sum} & = & 
+   x_0 + \sum \set{x_i \| 1 \le i < n \land 
+           \mbox{node~$i$'s value has been received}}.
 \end{eqnarray*}
 \end{slide}
 
@@ -254,13 +241,12 @@ for some permutations $i_1, \ldots, i_{n-1}$ and $j_1, \ldots, j_{n-1}$ of $1,
 
 We can test against a sequential specification.  We arrange for each thread to
 pick a random value for~|x|, write it into a global array~|xs| (indexed by
-thread identities, to avoid race conditions), use the |MinMax| object to
-obtain min and max values, and write these values to a global
-array~|results| (again indexed by thread identities).  We then check that each
-result was as expected.
+thread identities, to avoid race conditions), use the |Sum| object to obtain
+the purported sum, and write it to a global array~|results| (again indexed by
+thread identities).  We then check that each result was as expected.
 \begin{scala}
-  val min = xs.min; val max = xs.max
-  assert(results.forall(_ == (min, max)), ...)
+  val sum = xs.sum
+  assert(results.forall(_ == sum), ...)
 \end{scala}
 
 See code on course website.
@@ -322,17 +308,16 @@ See code on course website.
 \heading{Symmetric or fully-connected pattern}
 
 In this solution, every node sends its value to every other node, which
-calculates the minimum and maximum.
+calculates the sum.
 
 We give each node its own channel on which it can receive messages.
 \begin{scala}
-/** Implementation of MinMax using the symmetric (fully connected)
-  * pattern. */
-class Symmetric(n: Int) extends MinMax{
+/** Implementation of Sum using the symmetric (fully connected) pattern. */
+class Symmetric(n: Int) extends Sum{
   /** Channels to send to nodes, indexed by the receivers' identities. */
   private val toNode = Array.fill(n)(new BuffChan[Int](n-1 max 1))
 
-  def apply(me: Int, x: Int): IntPair = ...
+  def apply(me: Int, x: Int): Int = ...
 }
 \end{scala}
 \end{slide}
@@ -346,19 +331,16 @@ Each node needs to send $\sm{n}-1$ messages, and receive $\sm{n}-1$ messages.
 It is easiest if we do these two tasks in parallel.
 %
 \begin{scala}
-  def apply(me: Int, x: Int): IntPair = {
+  def apply(me: Int, x: Int): Int = {
     /* Thread to send x to other threads. */
     def sender = thread{ for(i <- 0 until n) if(i != me) toNode(i)!x }
-    /* Variables to hold min and max so far. */
-    var min = x; var max = x
-    /* Thread to receive from other threads, and accumulate min and max. */
+    var sum = x // sum so far
+    /* Thread to receive from other threads, and accumulate sum. */
     def receiver = thread{
-      for(i <- 1 until n){
-	val w = toNode(me)?(); if(w < min) min = w; if(w > max) max = w
-      }
+      for(i <- 1 until n){ val w = toNode(me)?(); sum += w }
     }
     run(sender || receiver)
-    (min, max)
+    sum
   }
 \end{scala}
 \end{slide}
@@ -369,16 +351,12 @@ It is easiest if we do these two tasks in parallel.
 \begin{slide}
 \heading{Invariant}
 
-Write $x_j$ for the value chosen by node~$j$.  Then each node~$i$ has values
-for \SCALA{min} and \SCALA{max} such that:
+Write $x_j$ for the value chosen by node~$j$.  Then each node~$i$ has a value
+for \SCALA{sum} such that:
 %
 \begin{eqnarray*}
-\mbox{\SCALA{min}} & = & 
-  \min(\set{x_i} \union 
-    \set{x_j \| \mbox{node~$j$ has sent its value to node~$i$}}), \\
-\mbox{\SCALA{max}} & = & 
-  \max(\set{x_i} \union 
-    \set{x_j \| \mbox{node~$j$ has sent its value to node~$i$}}).
+\sm{sum} & = & 
+  x_i + \sum \set{x_j \| \mbox{node~$j$ has sent its value to node~$i$}}.
 \end{eqnarray*}
 \end{slide}
 
@@ -448,25 +426,24 @@ In the second protocol, $n$ tokens are simultaneously passed round the ring.
 \heading{The first ring topology protocol}
 
 The first protocol uses two stages.  During the first stage, node~\SCALA{0}
-acts as the initiator, by sending a token containing two copies of its value.  
+acts as the initiator, by sending a token containing its value.  
 
-Each node in turn receives the token, containing the minimum and maximum value
-so far, calculates the new minimum and maximum, taking its own value into
-account, and sends them on.
+Each node in turn receives the token, which contains the sum so far,
+calculates the new sum, including its own value, and sends it on.
 
-More precisely,  the values \SCALA{(min1, max1)}
-passed from node $i$ to node~$(i+1) \bmod n$ will satisfy:
+More precisely, the value passed from node $i$ to node~$(i+1)
+\bmod n$ will equal:
 %
 \[
-\mbox{\SCALA{min1}}  = \min(\set{x_j \| 0 \le j \le i}), 
-\gap\gap
-\mbox{\SCALA{max1}} = \max(\set{x_j \| 0 \le j \le i}).
+\sum \set{x_j \| 0 \le j \le i}.
 \]
 
-When the values gets back to node \SCALA{0} they equal the overall minimum and
-maximum, $\min(\set{x_j \| 0 \le j \le n-1})$ and $\max(\set{x_j \| 0 \le j \le
-  n-1})$.  These values are then passed around the ring in the second stage,
-and each node records the values.
+When the value gets back to node \SCALA{0} it equals the overall sum, 
+\[
+\sum \set{x_j \| 0 \le j \le n-1}.
+\]
+This value is then passed around the ring in the second stage, and each node
+records the value.
 \end{slide}
 
 %%%%%
@@ -475,17 +452,17 @@ and each node records the values.
 \heading{The first ring topology protocol}
 
 \begin{scala}
-/** Implementation of MinMax using a ring, with a distinguished initiator.
+/** Implementation of Sum using a ring, with a distinguished initiator.
   * The initiator is the thread with identity 0. */
-class Ring(n: Int) extends MinMax{
+class Ring(n: Int) extends Sum{
   require(n >= 2)
 
   /** Channels connecting the threads.  Channel chan(i) goes from thread
     * (i-1)%n to thread i; so thread me receives on chan(me) and sends
     * on chan((me+1)%n). */
-  private val chan = Array.fill(n)(new SyncChan[IntPair])
+  private val chan = Array.fill(n)(new SyncChan[Int])
  
-  def apply(me: Int, x: Int): IntPair = ...
+  def apply(me: Int, x: Int): Int = ...
 }
 \end{scala}
 \end{slide}
@@ -496,20 +473,20 @@ class Ring(n: Int) extends MinMax{
 \heading{The first ring topology protocol}
 
 \begin{scala}
-  def apply(me: Int, x: Int): IntPair = {
+  def apply(me: Int, x: Int): Int = {
     val in = chan(me); val out = chan((me+1)%n)
-    if(me == 0){              // This is the initiator
-      out!(x, x)               // Start the communications going
-      val (min,max) = in?()  // Receive min and max back
-      out!(min,max)           // Send them round
-      (min, max)
+    if(me == 0){                  // This is the initiator
+      out!x                       // Start the communications going
+      val sum = in?()             // Receive sum back
+      out!sum                     // Send it round
+      sum
     }
     else{
-      val (min1, max1) = in?()          // Receive min and max so far
-      out!(Math.min(min1,x), Math.max(max1,x))// Pass on updated values
-      val (min, max) = in?()             // Receive final min and max
-      if(me != n-1) out!(min,max)    // Pass them on
-      (min, max)
+      val sum1 = in?()            // Receive sum so far
+      out!sum1+x                  // Pass on updated values
+      val sum = in?()             // Receive final sum
+      if(me != n-1) out!sum   // Pass it on
+      sum
     }
   } 
 \end{scala}
@@ -536,21 +513,19 @@ slow down the whole ring).
 \begin{slide}
 \heading{The second ring protocol}
 
-Each value gets passed around the ring.  Each node keeps track of the minimum
-and maximum values it has seen so far.
+Each value gets passed around the ring.  Each node keeps track of the sum of
+values it has seen so far.
 
 More precisely, on its $k$th iteration, each node~$i$ receives a value
 from node~$(i-1) \bmod n$ that originated with node $(i-k)\bmod n$; it
 sends this value on to node~$(i+1)\bmod n$, and keeps track of the
-minimum and maximum values, \SCALA{(min, max)} it has seen so far:
+sum, \SCALA{sum}, it has seen so far:
 %
 \begin{eqnarray*}
-\mbox{\SCALA{min}} & = & \min(\set{x_{(i-j)\bmod n} \| 0 \le j \le k}), \\
-\mbox{\SCALA{max}} & = & \max(\set{x_{(i-j)\bmod n} \| 0 \le j \le k}).
+\sm{sum} & = & \sum \set{x_{(i-j)\bmod n} \| 0 \le j \le k}.
 \end{eqnarray*}
 %
-At the end of iteration~$n-1$, it holds the overall minimum and
-maximum values.
+At the end of iteration~$n-1$, it holds the overall sum.
 \end{slide}
 
 %%%%%
@@ -559,14 +534,14 @@ maximum values.
 \heading{The second ring protocol}
 
 \begin{scala}
-/** Implementation of MinMax using a symmetric ring. */
-class RingSym(n: Int) extends MinMax{
+/** Implementation of Sum using a symmetric ring. */
+class RingSym(n: Int) extends Sum{
   /** Channels connecting the threads.  Channel chan(i) goes from thread
     * (i-1)%n to thread i; so thread me receives on chan(me) and sends
     * on chan((me+1)%n).  These channels need to be buffered.   */
   private val chan = Array.fill(n)(new BuffChan[Int](1))
 
-  def apply(me: Int, x: Int): IntPair = ...
+  def apply(me: Int, x: Int): Int = ...
 }
 \end{scala}
 \end{slide}
@@ -577,18 +552,17 @@ class RingSym(n: Int) extends MinMax{
 \heading{The second ring protocol}
 
 \begin{scala}
-  def apply(me: Int, x: Int): IntPair = {
+  def apply(me: Int, x: Int): Int = {
     val in = chan(me); val out = chan((me+1)%n)
-    var min = x; var max = x
+    var sum = x
     out!x                 // send my value round
     for(k <- 1 until n){
       val w = in?()       // receive next value
-      if(w < min) min = w
-      if(w > max) max = w 
+      sum += w
       out!w               // pass it on
     }
     val w = in?(); assert(x == w) // receive my value back
-    (min, max)
+    sum
   }
 \end{scala}
 \end{slide}
@@ -612,10 +586,9 @@ buffering might help to overcome inconsistencies in speeds of nodes.
 
 The final protocol works by arranging nodes into a binary tree.  In the
 initial stage, values get passed up the tree, starting from the leaves: each
-node passes to its parent the minimum and maximum of the subtree for which it
-is the root.  At the end of this stage, the root of the tree obtains the
-overall minimum and maximum.  In the second stage, these values get passed
-back down the tree.
+node passes to its parent the sum of the subtree for which it is the root.  At
+the end of this stage, the root of the tree obtains the overall sum.  In the
+second stage, this value is passed back down the tree.
 \end{slide}
 
 %%%%%
@@ -650,10 +623,10 @@ $2i+1$ and $2i+2$ (if those nodes exist).
 We will use two arrays of channels, to pass data up and down the tree:
 %
 \begin{scala}
-class Tree(n: Int) extends MinMax{
+class Tree(n: Int) extends Sum{
   /** Channels leading up and down the tree.  Each array is indexed by
     * the child's identity. */
-  private val up, down = Array.fill(n)(new SyncChan[IntPair])
+  private val up, down = Array.fill(n)(new SyncChan[Int])
   
   def apply(me: Int, x: Int) = ...
 }
@@ -671,41 +644,18 @@ parent, node~$(i-1) \div 2$.
 
 \begin{scala}
   def apply(me: Int, x: Int) = {
-    val child1 = 2*me+1; val child2 = 2*me+2  // Identities of children
-    var min = x; var max = x                 // min and max seen so far
-    // Receive min and max values from both children
-    if(child1 < n){ 
-      val (min1, max1) = up(child1)?()
-      if(min1 < min) min = min1; if(max1 > max) max = max1 
-    }
-    if(child2 < n){       
-      val (min1, max1) = up(child2)?()
-      if(min1 < min) min = min1; if(max1 > max) max = max1 
-    }
-    // min and max are the minimum and maximum values for the
-    // subtree rooted at me.
-    ...
-  }
-\end{scala}
-\end{slide}
-
-%%%%%
-
-\begin{slide}
-\heading{Tree-based protocol}
-
-\begin{scala}
-  def apply(me: Int, x: Int) = {
-    ...
-    // Send min and max to parent, and wait for overall min and max
-    if(me != 0){ 
-      up(me)!(min, max) 
-      val pair = down(me)?(); min = pair._1; max = pair._2
-    }
-    // Send min and max to children
-    if(child1 < n) down(child1)!(min, max)
-    if(child2 < n) down(child2)!(min, max)
-    (min, max)
+    val child1 = 2*me+1; val child2 = 2*me+2  // identities of children
+    var sum = x                                     // sum seen so far
+    // Receive sub-sums from both children
+    if(child1 < n){ val sum1 = up(child1)?(); sum += sum1 }
+    if(child2 < n){ val sum2 = up(child2)?(); sum += sum2 }
+    // £sum£ is the sum of values for the subtree rooted at me.
+    // Send £sum£ to parent, and wait for overall sum.
+    if(me != 0){ up(me)!sum; sum = down(me)?() }
+    // Send £sum£ to children
+    if(child1 < n) down(child1)!sum
+    if(child2 < n) down(child2)!sum
+    sum
   }
 \end{scala}
 \end{slide}
@@ -718,11 +668,11 @@ parent, node~$(i-1) \div 2$.
 \begin{slide}
 \heading{Correctness}
 
-\emph{Claim:} Each node~$i$ (with $0<i<n$) passes to its parent the minimum
-and maximum of the values held by the nodes in the subtree rooted at~$i$:
+\emph{Claim:} Each node~$i$ (with $0<i<n$) passes to its parent the sum of the
+values held by the nodes in the subtree rooted at~$i$:
 %
 \[
-(\min \set{x_j \| j \in descendents(i)}, \max \set{x_j \| j \in descendents(i)})
+\sum \set{x_j \| j \in descendents(i)}
 \]
 where
 \[
@@ -741,8 +691,8 @@ descendents(i) = \\
 
 The claim can be proven by induction on the size of $descendents(i)$.
 
-Hence node~$0$ ends up with the overall minimum and maximum, which get passed
-back down the tree.
+Hence node~$0$ ends up with the overall sum, which is passed back down the
+tree.
 \end{slide}
 
 %%%%%

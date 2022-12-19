@@ -1,0 +1,39 @@
+import ox.scl._
+
+/** The trait specifying the various sum examples.
+  * 
+  * Each thread calls apply, passing in its value, and gets back the overall
+  * sum. */
+trait Sum{
+  /** Submit value, and receive back overall sum. 
+    * @param me the identity of this thread.
+    * @param x the value submitted. */
+  def apply(me: Int, x: Int): Int
+}
+
+
+// -------------------------------------------------------
+
+/** Implementation of Sum using a controller.  The controller is the thread
+  * with identity 0. */
+class Centralised(n: Int) extends Sum{
+  private val toController = new BuffChan[Int](n-1 max 1)
+  private val fromController = new BuffChan[Int](n-1 max 1)
+
+  def apply(me: Int, x: Int): IntPair = {
+    if(me == 0){ // this is the controller
+      var sum = x
+      // Receive values from other threads
+      for(i <- 1 until n){
+        val w = toController?() ; sum += w
+      }
+      // Distribute sum
+      for(i <- 1 until n) fromController!sum
+      sum
+    }
+    else{
+      toController!x  // submit my value
+      fromController?() // get back the result
+    }
+  }
+}

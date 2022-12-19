@@ -1,0 +1,17 @@
+2 sits
+3 sits
+2 picks up left fork
+0 sits
+4 sits
+3 picks up left fork
+1 sits
+2 picks up right fork
+0 picks up left fork
+4 picks up left fork
+2 eats
+3 picks up right fork
+1 picks up left fork
+3 eats
+2 leaves
+4 picks up right fork
+2 sits

@@ -1,0 +1,11 @@
+TrapeziumT.scala: base class of the Trapezium classes, and sequential
+implementation.
+
+Trapezium.scala: Trapezium, TrapeziumBag, and TrapeziumBagObjects classes.
+
+TrapeziumTest.tester for the above three.
+
+TrapeziumRun.scala: program to perform a single run, based on command-line
+arguments.
+
+TrapeziumExperiment: harness for various experiments.

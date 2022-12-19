@@ -3,7 +3,7 @@
 \usepackage[overheads]{mysepslides}
 \usepackage{tech,graphicx,url,tikz,scalalistings}
 
-\title{Concurrent Datatypes} 
+\title{Partial Datatypes and Breadth-First Search} 
 \author{Gavin Lowe}
 
 \def\scalacolour{\color{violet}}
@@ -17,30 +17,24 @@
 
 \end{slide}
 
-%%%%%
+\input{datatypes-partial-queue} % partial queue, including termination
 
-\input{client-server-queue} % concurrent total queue, using a server;
-% linearizability testing
-
-
-%%%%%
+\input{datatypes-graph-search} % breadth-first search.
 
 \begin{slide}
 \heading{Summary}
 
 \begin{itemize}
 \item 
-Concurrent datatypes;
+Example: a partial concurrent queue;
 
 \item
-Total and partial datatypes;
+Testing for linearizability: capturing preconditions;
 
-\item Example: a total concurrent queue;
+\item 
+Termination;
 
-\item
-Linearization; 
-
-\item Testing for linearizability.
+\item Example: breadth-first search.
 \end{itemize}
 \end{slide}
 

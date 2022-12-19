@@ -1,0 +1,18 @@
+import io.threadcso._
+import scala.language.postfixOps
+
+object Mults4{
+
+  def nats(out: ![Int]) = 
+    proc{ var n=0; while (true) { out!n; n+=1 }} 
+
+  def alts[T](in: ?[T], out: ![T]) =
+    proc{ while (true) { out!(in?()); in?() }}
+
+  val x1, x2, x4 = OneOne[Int]
+
+  def system = nats(x1) || alts(x1, x2) || alts(x2, x4) || component.console(x4)
+
+  def main(args: Array[String]) = run(system)
+}
+

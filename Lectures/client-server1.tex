@@ -93,10 +93,9 @@ class RAServer1(clients: Int, numResources: Int) extends RAServer{
 \heading{Channels}
 
 Internally, clients will send requests to a server thread, and receive replies
-back. 
-%
-We use one channel per client to allow the server to allocate resources.  We
-use two buffered channels to allow clients to request or return resources.
+back.  We use two buffered channels to allow clients to request or return
+resources.  We use one channel per client to allow the server to allocate
+resources.
 %
 \begin{scala}
 class RAServer1(clients: Int, numResources: Int) extends RAServer{
@@ -200,10 +199,10 @@ terminate.
   private def server = thread{
     ...
     serve(
-      acquireRequestChan =?=> { c => ... }
-      | returnChan =?=> { r => ... }
+      ...
       | shutdownChan =?=> { _ =>
-          acquireRequestChan.close; returnChan.close; shutdownChan.close }
+          acquireRequestChan.close; returnChan.close; shutdownChan.close
+          acquireReplyChan.foreach(_.close) }
     )
   }
 \end{scala}  

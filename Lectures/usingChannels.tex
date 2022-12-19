@@ -75,7 +75,7 @@ exception, it executes~|q|.
 
 Suppose the first input succeeds, giving a value stored in |pivot|.  We then
 create two recursive |qSort| threads, that will deal with values less than
-|pivot| and at least pivot, respectively.  In addition, a controller thread:
+|pivot|, and at least pivot, respectively.  In addition, a controller thread:
 %
 \begin{itemize}
 \item Continues to input on |in|, passing values to the appropriate recursive
@@ -246,7 +246,7 @@ It is sometimes useful to consider an ordering over actions (memory reads and
 writes, and sends and receives of messages) that talks about the order in
 which those actions must happen.
 
-We will write $a \preceq a'$, and say $a$ happens before~$a'$, if (in a
+We will write $a \preceq a'$, and say $a$ \emph{happens before}~$a'$, if (in a
 particular execution of the program), $a'$ occur after, or simultaneously
 with, $a$.
 

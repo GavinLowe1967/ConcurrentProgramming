@@ -102,7 +102,7 @@ implemented.
         toWorkers!(left, right, taskSize, delta)
         left = right
       }
-      toWorkers.close
+      toWorkers.endOfStream
     }
 
     // Start the server running
@@ -116,8 +116,8 @@ implemented.
 \begin{slide}
 \heading{\scalashape fork}
 
-If |t| is a |ThreadGroup|, then |fork(t)| or |t.fork| starts a new thread
-running which executes~|t|.
+If |t| is a |ThreadGroup|, then |fork(t)| or |t.fork| starts a new thread (or
+threads) running which executes~|t|.
 
 Note that this is in parallel to the current thread.  On the previous slide,
 the construction of the |BagOfTasks| returns after the |fork(server)|, but

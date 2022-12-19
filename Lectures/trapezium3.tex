@@ -84,46 +84,17 @@ Each  worker process will repeatedly receive and process tasks, until the
 \begin{slide}
 \heading{The controller}
 
-We could design the controller to:
-%
-\begin{enumerate}
-\item
-Distribute \SCALA{nWorkers} tasks;
+The controller has to both distribute tasks (on |toWorkers|), and receive
+results (on |toController|).
 
-\item
-Repeat \SCALA{nTasks - nWorkers} times: receive a result and distribute the next
-task;
+Implementing this using a single controller thread is tricky, because that
+thread needs to deal with communications on two channels. 
 
-\item
-Receive the final \SCALA{nWorkers} results;
+But the issues of distributing the tasks and receiving the results are
+independent.  So let's split them between two parallel processes!  
 
-\item
-Close the \SCALA{toWorkers} channel so they can terminate.
-\end{enumerate}
-
-Can we simplify this?
-
-% And what happens if one of the workers dies while awaiting its first task?
-\end{slide}
-
-%%%%%
-
-\begin{slide}
-\heading{A parallel controller}
-
-The issues of 
-%
-\begin{itemize}
-\item
-Distributing the tasks (and closing the \SCALA{toWorkers} channel), and
-
-\item
-Receiving the results and adding them up
-\end{itemize}
-%
-are independent.  So let's distribute them between two parallel processes!
-This might also give better performance, if the controller acts as a
-bottleneck.  
+Also, this might also give better performance, if the controller acts as a
+bottleneck.
 \end{slide}
 
 %%%%%

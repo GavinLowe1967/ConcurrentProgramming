@@ -3,10 +3,11 @@
 \begin{slide}
 \heading{A partial queue}
 
-Remember that we earlier decided to return |None| if |dequeue| is called when
-the queue is empty.  An alternative is to block that thread until there is a
-value to be dequeued.  This gives a partial queue, with the following
-interface. 
+In the previous chapter we implemented a total concurrent queue that returns
+|None| if |dequeue| is called when the queue is empty.  
+%
+An alternative is to block that thread until there is a value to be dequeued.
+This gives a partial queue, with the following interface.
 
 \begin{scala}
 trait PartialQueue[T]{
@@ -37,7 +38,7 @@ class ServerPartialQueue[T] extends PartialQueue[T]{
   def dequeue: T = dequeueChan?()
 
   private def server = thread{
-    val queue = new Queue[T]
+    val queue = new scala.collection.mutable.Queue[T]
     serve(
       enqueueChan =?=> { x => queue.enqueue(x) }
       | queue.nonEmpty && dequeueChan =!=> queue.dequeue
@@ -62,8 +63,8 @@ that a dequeue cannot happen when the queue is empty.
     require(q.nonEmpty); q.dequeue
   }
 \end{scala}
-An operation on the concurrent datatype cannot be linearized in a state where
-the corresponding operation on the sequential datatype throws an
+An operation invocation on the concurrent datatype cannot be linearized in a
+state where the corresponding operation on the sequential datatype throws an
 |IllegalArgumentException|.
 
 Also we have to be careful that we never get into a deadlocked state where all
@@ -87,8 +88,8 @@ to use an |Option| value).
 In order to do this, the server needs to know how many threads are attempting
 a dequeue.  That means we can't just block the |dequeueChan| channel when the
 queue is empty.  Instead, we arrange for the dequeueing thread to pass a reply
-channel on the |dequeueChan|.  These reply channels are queued until the
-request can be made.  If the number of queued reply channels equals the number
+channel on the |dequeueChan|.  These reply channels are stored until the
+request can be made.  If the number of stored reply channels equals the number
 of workers, the queue shuts down.
 \end{slide}
 

@@ -1,0 +1,56 @@
+\documentclass[a4paper]{article}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.10}
+\begin{document}
+
+\begin{tikzpicture}
+\begin{axis}[
+  title = Timing experiment on the numerical integration example,
+  ylabel = Time (ms),
+  legend pos = north east,
+  height = 0.98\textheight,
+  width = 0.98\textwidth,
+  scaled ticks = false,
+  xlabel = Amount of buffering,
+  xtick = data,
+  symbolic x coords={0,1,2,4,8,16}
+]
+\addplot+[error bars/.cd, y dir=both,y explicit] coordinates {
+  (0,2989.2957385) +- (0,103.45175987787262)
+  (1,2993.1884653) +- (0,125.74248831199799)
+  (2,3067.875445) +- (0,171.64022499255003)
+  (4,3152.0190092) +- (0,142.03778393104528)
+  (8,3060.582757) +- (0,193.56698993793566)
+  (16,3147.5661566) +- (0,205.36243915152795)
+};
+\addlegendentry{$n = 2^{16}$}
+\addplot+[error bars/.cd, y dir=both,y explicit] coordinates {
+  (0,2908.6891514) +- (0,215.77822594348012)
+  (1,2855.0188503000004) +- (0,135.41017370549946)
+  (2,2628.1242293) +- (0,69.32003710753742)
+  (4,2717.3521591999997) +- (0,107.69434368258618)
+  (8,2722.324736) +- (0,77.49021237707447)
+  (16,2677.3162967) +- (0,95.3790536869951)
+};
+\addlegendentry{$n = 2^{20}$}
+\addplot+[error bars/.cd, y dir=both,y explicit] coordinates {
+  (0,2522.9711036) +- (0,153.02602257442504)
+  (1,2522.2686740999998) +- (0,114.64702532401213)
+  (2,2412.7038823000003) +- (0,148.17272372082093)
+  (4,2462.8667003) +- (0,67.9323731766076)
+  (8,2471.1833048000003) +- (0,58.87069089855378)
+  (16,2512.253822) +- (0,73.01386256596582)
+};
+\addlegendentry{$n = 2^{24}$}
+\addplot+[error bars/.cd, y dir=both,y explicit] coordinates {
+  (0,2243.0247255) +- (0,24.085995145789838)
+  (1,2310.4484896) +- (0,73.4372657176906)
+  (2,2207.2236055) +- (0,21.099421687700683)
+  (4,2293.0593844) +- (0,50.02601518207952)
+  (8,2305.9508109000003) +- (0,56.61644409358768)
+  (16,2240.8980919) +- (0,93.03932747069297)
+};
+\addlegendentry{$n = 2^{28}$}
+\end{axis}
+\end{tikzpicture}
+\end{document}

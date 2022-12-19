@@ -59,9 +59,11 @@ sessions.
 \heading{Prerequisites}
 
 \begin{itemize}
-\item Basic understanding of object-oriented programming (objects, classes,
-interfaces, inheritance, abstract classes, polymorphism), and comfort with
-programming in Scala.
+\item Good programming skills using Scala. 
+
+%% \item Basic understanding of object-oriented programming (objects, classes,
+%% interfaces, inheritance, abstract classes, polymorphism), and comfort with
+%% programming in Scala.
 
 \item Familiarity with standard techniques for reasoning about (sequential)
 programs:  pre- and post-conditions, invariants, and abstraction functions.
@@ -230,7 +232,7 @@ More examples:
 Operating systems;
 
 \item
-Real-time controllers for power plants, spacecraft, etc;
+Real-time controllers for factories, power plants, spacecraft, etc;
 
 \item
 Programs with GUIs that must respond to user actions;
@@ -291,20 +293,20 @@ background for the rest of the course.
 \heading{Uni-processor multi-threaded systems}
 
 Until early this century, most personal computers had a single processor.
-However, they could run multiple (user and operating system) processes.
+However, they could run multiple (user and operating system) threads.
 
 In such systems, the operating system is responsible for sharing the processor
-between processes.  The operating system selects a suitable process and
+between threads.  The operating system selects a suitable thread and
 executes it until either:
 \begin{itemize}
 \item
-the process suspends itself, e.g.~waiting for input or output to complete; or
+the thread suspends itself, e.g.~waiting for input or output to complete; or
 
 \item
-the process has used up its time allocation, at which point it is interrupted.
+the thread has used up its time allocation, at which point it is interrupted.
 \end{itemize}
 %
-A new process can then be scheduled.  See an Operating Systems textbook for
+A new thread can then be scheduled.  See an Operating Systems textbook for
 more details.
 \end{slide}
 
@@ -529,8 +531,7 @@ network, such as a local area Ethernet or the Internet.
 \heading{Shared variables}
 
 We will mainly consider programs for shared-memory multiprocessors in this
-course (although their behaviour will be essentially identical on
-multi-threaded uni-processors).
+course.
 
 The main difficulty we have to overcome is ensuring \emph{disciplined} access
 to shared variables.  
@@ -552,10 +553,10 @@ import ox.scl._
 object Race{
   var x = 0
 
-  /** Process to increment x 1000 times. */
+  /** Thread to increment x 1000 times. */
   def p = thread{ for(i <- 0 until 1000) x = x+1 }
 
-  /** Process to decrement x 1000 times. */
+  /** Thread to decrement x 1000 times. */
   def q = thread{ for(i <- 0 until 1000) x = x-1 }
 
   /** Parallel composition. */

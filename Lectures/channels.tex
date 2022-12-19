@@ -356,10 +356,9 @@ def tee[A](in: ?[A], out1: ![A], out2: ![A]) = thread{
 }
 \end{scala}
 
-The above version of \SCALA{tee} output on its \SCALA{out1}
-channel before its \SCALA{out2} channel.
-What happens if we use this in the context of some larger system that inputs
-on \SCALA{out2} before \SCALA{out1}?  For example:
+The above version of \SCALA{tee} outputs on its \SCALA{out1} channel before
+its \SCALA{out2} channel.  What happens if we use this in the context of some
+larger system that inputs on \SCALA{out2} before \SCALA{out1}?  For example:
 \begin{scala}
 val in, out1, out2 = new SyncChan[Int]
 run( tee(in, out1, out2) || thread{ println(out2?() + out1?()) } )
@@ -518,7 +517,7 @@ It is possible to test whether a channel is closed using
 
 \begin{itemize}
 \item 
-Mesage passing using channels;
+Message passing using channels;
 
 \item
 Synchronous channels, buffered channels, ports, sending and receiving;

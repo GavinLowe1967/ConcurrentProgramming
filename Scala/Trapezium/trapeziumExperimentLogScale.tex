@@ -1,0 +1,63 @@
+\documentclass[a4paper]{article}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.10}
+\begin{document}
+
+\begin{tikzpicture}
+\begin{semilogxaxis}[
+  title = Timing experiment on the numerical integration example,
+  ylabel = Time (ms),
+  legend pos = north east,
+  height = 0.98\textheight,
+  width = 0.98\textwidth,
+  scaled ticks = false,
+  xlabel = Number of workers,
+  legend pos = north west,
+  xmin = 1,
+  ymin = 0,
+  ymax = 16000,
+  log basis x=2
+]
+\addplot+[error bars/.cd, y dir=both,y explicit] coordinates {
+  (64,19182.4164605) +- (0,2805.6562922555463)
+  (32,11047.3544005) +- (0,11587.277111886464)
+  (16,6797.223929) +- (0,6753.126148669801)
+  (8,5443.92557) +- (0,3304.840958151236)
+  (4,3902.9367) +- (0,59.61977391177751)
+  (2,4147.4918555) +- (0,783.2224427928035)
+  (1,6688.7519085) +- (0,119.23494182437018)
+};
+\addlegendentry{$n = 2^{16}$}
+\addplot+[error bars/.cd, y dir=both,y explicit] coordinates {
+  (64,7849.631431) +- (0,19434.87938281702)
+  (32,5460.475869) +- (0,1734.2560861424731)
+  (16,3746.596764) +- (0,2278.962464585744)
+  (8,2883.104577) +- (0,1833.118896871669)
+  (4,2392.912744) +- (0,196.55349949204435)
+  (2,3182.5525135) +- (0,66.00588060223653)
+  (1,5493.046197) +- (0,73.48848192897974)
+};
+\addlegendentry{$n = 2^{18}$}
+\addplot+[error bars/.cd, y dir=both,y explicit] coordinates {
+  (64,2610.966581) +- (0,465.420970180247)
+  (32,2056.4760675) +- (0,112.98192627449427)
+  (16,1892.523901) +- (0,658.0700816957142)
+  (8,1763.188587) +- (0,379.11675611943053)
+  (4,1831.819658) +- (0,777.0200169967328)
+  (2,2772.5846235) +- (0,80.10266499286628)
+  (1,5075.110022) +- (0,233.69541289649794)
+};
+\addlegendentry{$n = 2^{20}$}
+\addplot+[error bars/.cd, y dir=both,y explicit] coordinates {
+  (64,1108.148943) +- (0,1572.8452168721692)
+  (32,1121.6020515) +- (0,11.858910450143087)
+  (16,1247.162526) +- (0,878.1536933267835)
+  (8,1119.7787215) +- (0,506.53784817499354)
+  (4,1546.788641) +- (0,75.73481184865949)
+  (2,2606.655098) +- (0,70.61673991033194)
+  (1,4902.821542) +- (0,68.6296292716714)
+};
+\addlegendentry{$n = 2^{24}$}
+\end{semilogxaxis}
+\end{tikzpicture}
+\end{document}

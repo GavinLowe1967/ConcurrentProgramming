@@ -2,7 +2,9 @@
 \heading{Concurrent datatypes}
 
 A \emph{concurrent datatype} is a datatype (e.g.~a queue, stack, set or
-mapping) that can be safely accessed concurrently by multiple threads.  
+mapping) that can be safely accessed concurrently by multiple threads.
+Operation invocations should appear to take place in a one-at-a-time order,
+without interference. 
 
 Threads that use the concurrent datatype can act much as they would with a
 sequential datatype: the implementer of the threads does not need to think
@@ -215,17 +217,17 @@ What does correctness mean for a concurrent queue?
 %% How can we test concurrent queue implementations?
 %% We need first to be clear about what correctness means. 
 \begin{itemize}
-\item Each operation should take place (apparently) in a one-at-a-time way,
-without interference between operations.  
+\item Operation invocations should take place (apparently) in a one-at-a-time
+  way, without interference between invocations.
 
-\item The point at which each operation takes effect is between the time the
-operation was invoked and when it returns.  
+\item The point at which each invocation takes effect is between the time the
+invocation was invoked and when it returns.  
 
-\item The values returned by operations should be the same as for a sequential
-queue (when the operations are performed in the same order). 
+\item The values returned by invocations should be the same as for a sequential
+queue (when the invocations are performed in the same order). 
 \end{itemize}
 
-This property is called \emph{linearization}.  The points at which operations
+This property is called \emph{linearization}.  The points at which invocations
 appear to take effect are called \emph{linearization points}.  (See the
 Concurrent Algorithms and Data Structures course for a formal definition.)
 \end{slide}
@@ -246,7 +248,7 @@ Concurrent Algorithms and Data Structures course for a formal definition.)
 \begin{slide}
 \heading{Linearization examples}
 
-In the timeline below, the dequeue of 4 can be explained by the operations
+In the timeline below, the dequeue of 4 can be explained by the invocations
 being linearized at the points marked ``X''.
 %
 \unScalaMid
@@ -365,9 +367,9 @@ Alternatively
 \begin{slide}
 \heading{Synchronous channels}
 
-Using synchronous channels, the operations have an effect in the order of the
+Using synchronous channels, the invocations have an effect in the order of the
 channel communications.  This order is compatible with the order of the
-operation calls and returns.
+invocations calls and returns.
 
 We will always use synchronous channels when implementing a concurrent
 datatype using a server process.   
@@ -565,11 +567,11 @@ testing harness by making dequeues more frequent than enqueues.
 \begin{slide}
 \heading{Logging}
 
-By default, the linearizability tester logs operation calls using thread-local
-logs, pairing each event with a timestamp.  We saw a similar technique in an
-earlier chapter.  If you're using an operating system that doesn't support
-timestamps property, setting the optional parameter |tsLog| to |false| will
-use a different type of log. 
+By default, the linearizability tester logs operation calls and returns using
+thread-local logs, pairing each event with a timestamp.  We saw a similar
+technique in an earlier chapter.  If you're using an operating system that
+doesn't support timestamps property, setting the optional parameter |tsLog| to
+|false| will use a different type of log.
 %
 \begin{scala}
   val tester = LinearizabilityTester[S, C](

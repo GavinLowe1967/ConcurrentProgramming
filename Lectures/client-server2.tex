@@ -45,7 +45,7 @@ results of logging as an |Array[LogEvent]|.
         }
       }
       else if(got.nonEmpty){    	// Return resource
-	val r = got.dequeue
+	val r = got.dequeue()
         log.add(me, ReturnedResource(me, r))
 	resourceServer.returnResource(me, r)
       }
@@ -86,8 +86,8 @@ produce true positives.
     val log = new Log[LogEvent](p)
     val resourceServer = new RAServer(p, numResources)
     run(||(for (i <- 0 until p) yield client(i, resourceServer, log)))
-    resourceServer.shutdown
-    if(!checkLog(log.get)) sys.exit
+    resourceServer.shutdown        // allow server to terminate
+    if(!checkLog(log.get)) sys.exit()
   }
 \end{scala}
 
@@ -234,7 +234,7 @@ The server keeps track of the pending requests in a queue.
       }
       | returnChan =?=> { r =>
           if(pending.nonEmpty)
-            pending.dequeue!Some(r) // allocate r to blocked client
+            pending.dequeue()!Some(r) // allocate r to blocked client
           else free(r) = true
       }
       | shutdownChan =?=> { _ => ... }
