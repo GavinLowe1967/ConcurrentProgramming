@@ -1,0 +1,114 @@
+\begin{question}
+\Programming\ (Based on Andrews, Exercise 7.11.)
+%
+Cars coming from the north and the south arrive at a one-lane bridge.  Cars
+heading in the same direction can cross the bridge at the same time, but cars
+heading in the opposite direction cannot.
+
+Develop a server process to manage use of the bridge.  Assume that cars are
+client processes.  Describe the protocol between the cars and the server.
+\end{question}
+
+%%%%%
+
+\begin{answer}
+The protocol is that cars send a Arrive message when they arrive, wait for
+an acknowledgement (a Unit), cross the bridge, then send a Leave message.
+The server allows cars to proceed if there is no car crossing or waiting to
+cross in the opposite direction; otherwise the car queues.
+%
+\begin{scala}
+import ox.CSO._;
+
+object OneLaneBridge{
+  type ClientId = Int;
+ 
+  abstract class Request;
+  case class Arrive(fromN:Boolean, c:ClientId) extends Request;
+  case class Leave(c:ClientId) extends Request;
+
+  // The server
+  def Server(req: ?[Request], resp: Seq[![Unit]]) = proc{
+    var currentN = true; // is current priority from north?    
+    // Queue of cars queuing in the opposite direction  
+    var queue = new scala.collection.mutable.Queue[ClientId] 
+    // Queues going in the current direction, now queueing
+    var nextQueue = new scala.collection.mutable.Queue[ClientId] 
+    var count = 0; // number of cars currently crossing
+
+    // Convert direction to string
+    def showDir(isN:Boolean) = if(isN) "North" else "South";
+
+    repeat{
+      req? match{
+	case Arrive(fromN, c) => {
+	  if(fromN==currentN){ // Car going in current direction
+	    if(queue.isEmpty){ // Allow to proceed
+	      resp(c)!(); count += 1;
+	      println("Car "+c+" arrives from "+
+		      showDir(fromN)+" and proceeds")
+	    } else { // Must wait
+	      nextQueue += c;
+	      println("Car "+c+" arrives from "+
+		      showDir(fromN)+" and queues")
+	    }
+	  }
+	  else if(count==0){ 
+            // Reverse direction, allow to proceed
+	    currentN = fromN; resp(c)!(); count = 1;
+	    println("Car "+c+" arrives from "+
+		    showDir(fromN)+" and proceeds")
+	  } else { // Add to queue
+	    queue += c;
+	    println("Car "+c+" arrives from "+
+		    showDir(fromN)+" and queues")
+	  }
+	}
+	case Leave(c) => { // Detect a car has left
+	  count -= 1;
+	  println("Car "+c+" leaves");
+	  if(count==0 && !queue.isEmpty){ // Reverse direction
+	    currentN = !currentN;
+	    // Set the queue going
+	    while(!queue.isEmpty){ 
+	      val c = queue.dequeue; resp(c)!(); count += 1;
+	      println("Car "+c+" dequeued, and continues "+
+		      showDir(currentN))
+	    }
+	    // Swap the queues
+	    val temp = queue; 
+            queue = nextQueue; nextQueue = queue;
+	  }
+	}
+      }
+    }
+  }
+
+  val random = new scala.util.Random;
+
+  // A car
+  def Car(me: Int, req: ![Request], resp: ?[Unit]) = proc{
+    repeat{
+      sleep(random.nextInt(8000));
+      // Arrive from random direction
+      req!Arrive(random.nextInt(2)==0, me); 
+      resp?; // Wait for permission 
+      sleep(random.nextInt(2000)); // Cross the bridge
+      req!Leave(me); // And away
+    }
+  }
+
+  // Put system together
+  val numCars = 5;
+  val req = ManyOne[Request];
+  val resp = OneOne[Unit](numCars);
+
+  def Cars = 
+    || ( for(i <- 0 until numCars) yield Car(i, req, resp(i)) )
+
+  def System = Server(req, resp) || Cars
+
+  def main(args:Array[String]) = System();
+}
+\end{scala}
+\end{answer}

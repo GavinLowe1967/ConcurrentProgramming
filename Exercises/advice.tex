@@ -1,0 +1,47 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage{scalalistings}
+
+\begin{document}
+\begin{center}
+\Large\bf Notes on past exam papers
+\end{center}
+
+This note gives a brief comparison between previous exam papers and the
+current syllabus.  I taught the course between 2009 and 2011, and Bernard
+Sufrin taught it between 2012 and 2018, so the former papers are more likely
+to be indicative of my style; however, my thinking on the subject has
+developed since then.  Note that the exam will be fair to students who
+attended lectures in either 2018 or 2019. 
+%
+\begin{itemize}
+\item Previous exam papers placed more emphasis on the closing of channels
+  than we have this year: either to signal the end of an input stream, or to
+  indicate that a consumer is unwilling to receive more input.
+
+\item This year I have placed more emphasis on concurrent datatypes than in
+  previous years.
+
+\item Monitors were added to CSO in 2016; prior to then, ``monitor'' meant JVM
+  monitor, but you might choose whether to use a CSO monitor or a JVM monitor
+  with such questions.
+
+\item For some questions involving semaphores, the operations are called
+  |acquire| and |release|, rather then |down| and |up|.
+
+\item Question 1 from 2015 requires the use of a timeout within an |alt| or
+  |serve|, which is a construct we haven't used this year.  Here's an
+  indicative example:
+\begin{scala}
+  alt(
+    c =?=> { x => println(x+" received") }
+    | after(1000) ==> { println("Timeout") }
+  )
+\end{scala}
+\end{itemize}
+
+\begin{flushright}
+Gavin Lowe
+\end{flushright}
+
+
+\end{document}

@@ -1,0 +1,30 @@
+\begin{nontutequestion}
+Design a \emph{change machine} process with signature:
+%
+\begin{scala}
+def ChangeMachine(inPound: ?[Unit], out5p: ![Unit], out10p: ![Unit], out20p: ![Unit])
+\end{scala}
+%
+where communications on the channels correspond to the insertion of \pounds 1,
+and the output of a 5p, 10p or 20p piece, respectively.  It should be willing
+to accept \SCALA{inPound} whenever it had a zero balance.  It should offer
+the environment the choice between how it wants the change, subject to the
+condition that it should not output coins of more value than it has received. 
+\end{nontutequestion}
+
+%%%%%
+
+\begin{nontuteanswer}
+\Small
+\begin{scala}  
+def ChangeMachine(inPound: ?[Unit], out5p: ![Unit], out10p: ![Unit], out20p: ![Unit]) = proc{
+  var credit = 0 // credit in pence
+  serve(
+    (credit == 0 && inPound) =?=> { () => credit += 100 }
+    | (credit >= 5 && out5p) =!=> { credit -= 5; () }
+    | (credit >= 10 && out10p) =!=> { credit -= 10; () }
+    | (credit >= 20 && out20p) =!=> { credit -= 20; () }
+  )
+}
+\end{scala}
+\end{nontuteanswer}

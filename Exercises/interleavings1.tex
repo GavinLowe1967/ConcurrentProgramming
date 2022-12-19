@@ -1,0 +1,16 @@
+\begin{nontutequestion}
+Suppose process \SCALA{P} performs $m$ atomic actions (sequentially), and
+process \SCALA{Q} performs $n$ atomic actions (sequentially).  When \SCALA{P}
+and \SCALA{Q} are run in parallel, how many interleavings of atomic actions
+are there?
+\end{nontutequestion}
+%
+\begin{nontuteanswer}
+There are a total of $m+n$ atomic actions.  The number of ways of choosing
+which $m$ of these belong to~\SCALA{P} is
+\[
+\left( \begin{array}{@{}c@{}} m+n \\ m \end{array} \right) =
+\frac{(m+n)!}{m! n!}
+\]
+\end{nontuteanswer}
+

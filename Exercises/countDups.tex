@@ -1,0 +1,207 @@
+\begin{nontutequestion}
+Suppose you are given two large arrays of |Int|s, |a| and~|b|, neither
+of which contains any repetitions.  Describe the design for a
+concurrent program to count the number of values that appear in both
+arrays.  This problem could be specified (using a couple of functions
+from the Scala API) as:
+\begin{scala}
+  a.count(b.contains(_))
+\end{scala}
+(You do not need to produce concrete code, unless you want to.)
+%%  Briefly explain
+%% your design.  
+% \textbf{Hint:} use a hash table
+% (\url{scala.collection.mutable.HashSet}).  
+
+\end{nontutequestion}
+
+%%%%%
+
+\begin{nontuteanswer}
+The easiest way is to split |a| into several segments, one for each worker.
+Each worker counts the number of values that appear in both its segment and
+in~|b|, and sends the result to a controller.  The controller adds up the
+sub-results.  Each worker can calculate its result by putting the elements
+of~|b| into a hash table, then counting the number of elements from its
+segment that are in the hash table (this avoids quadratic behaviour).  Here's
+my code.
+%
+\begin{scala}
+/** Object to count the number of duplicates between a and b, using numWorkers
+  * worker threads. */
+class CountDups(a: Array[Int], b: Array[Int], numWorkers: Int){
+  private val aSize = a.length
+
+  /** Channel for workers to send results to controller. */
+  private val toController = ManyOne[Int]
+
+  /** A single worker. */
+  private def worker(me: Int) = proc{
+    // This worker will deal with a[aStart..aEnd) and all of b
+    val aStart = (me*aSize)/numWorkers
+    val aEnd = (me+1)*aSize/numWorkers
+    // Hash table storing elements of b.
+    val bHash = new scala.collection.mutable.HashSet[Int]
+    bHash ++= b
+    // Iterate through segment of a, counting how many entries are in bHash
+    var count = 0
+    for(i <- aStart until aEnd; if bHash.contains(a(i))) count += 1 
+    // Send result to controller
+    toController!count
+  }
+
+  /** Variable that ends up holding the result.  While the system is running,
+    * only the controller writes to this, and no other thread reads it, so
+    * there are no races. */
+  private var result = 0
+
+  /** The controller. */
+  private def controller = proc{
+    for(i <- 0 until numWorkers) result += toController?()
+  }
+
+  /** Find the number of duplicates. */
+  def apply(): Int = {
+    result = 0
+    // Run the system
+    run(|| (for(i <- 0 until numWorkers) yield worker(i)) || controller)
+    result
+  }	
+}
+\end{scala}
+
+An alternative would be to use the bag-of-tasks pattern, where each task
+corresponds to a segment of~|a|; note that each worker can re-use its hash
+table for multiple tasks. 
+
+There seems no point in splitting \emph{both} |a| and~|b| into multiple
+segments, as this wouldn't allow the hash table to be re-used.  
+
+In fact, it is probably sound for the workers to share a single hash table
+|bHash| that stores the values from~|b|, as long as all the elements of~|b| are
+added to |bHash| before any worker starts.  This assumes that the |contains|
+operation for the hash table is thread-safe (i.e.~two threads can safely perform
+|contains| concurrently); this will be the case if |contains| performs no
+write of a variable (which will often be the case).  It is tempting to arrange
+for the workers to share the work of adding the elements of |b| to |bHash|.
+However, the |add| operation on the hash table almost certainly isn't
+thread-safe; we will see in later chapters how to design a concurrent
+datatype, like a hash table, that is thread-safe. 
+
+Testing can be performed by generating random arrays with no repetitions,
+running the concurrent algorithm, and then comparing with the result specifed
+in the question; this can be repeated many times.
+\end{nontuteanswer}
+
+
+%%% Old version, which doesn't make a lot of sense.
+
+% The obvious approach is to split \SCALA{a} into \SCALA{aSegs} segments, and
+% \SCALA{b} into \SCALA{bSegs} segments, and to give a segment of \SCALA{a}
+% and a segment of \SCALA{b} to each worker (possibly several pairs of segments,
+% but see below).  The worker can count the number of common values in these
+% segments by putting the elements of the segment of \SCALA{b}, say, into a hash
+% table, and then testing whether each element of the segment of \SCALA{a} is in
+% that hash table.  The counts from each worker can be passed to a
+% controller,that adds them up. 
+
+% Should we use the bag of tasks pattern, or should each worker deal with a
+% single segment of each array?
+% A bit of thought shows that taking \SCALA{aSegs*bSegs} greater than the number
+% of processes leads to duplicated work: splitting a segment of~\SCALA{a} into
+% multiple segments means that the hash table for the segment of~\SCALA{b} has
+% to be created extra times; and splitting a segment of~\SCALA{b} into multiple
+% segments means that each element of~\SCALA{a} has to be dealt with extra
+% times.  We therefore avoid the bag of tasks pattern, and allocate a single
+% segment of each array to each worker.  
+
+% Code is not compulsory, but I'll include mine below, anyway.  My experiments
+% suggest that this is fastest (on an 8 processor machine) when we take
+% \SCALA{aSegs = 1} and \SCALA{bSegs = 8}.  This is an artefact of the relative
+% speeds of different operations, and I don't think could have been anticipated
+% in advance. 
+
+
+%% We split \SCALA{a} into \SCALA{aSegs} segments, and \SCALA{b} into
+%% \SCALA{bSegs} segments.  Each of the \SCALA{numWorkers = aSegs*bSegs} workers
+%% wil work on a segment of \SCALA{a} and a segment of~\SCALA{b}, and count the
+%% number of values that appear in both segments, and send the result to the
+%% controller.  The elements of the \SCALA{b} segment are put into a hash table
+%% to allow fast checking of membership.
+%
+% \begin{scala}
+% // Given arrays a, b, with no repetitions, count the 
+% // number of distinct elements in both a and b.
+
+% import ox.CSO._;
+
+% object CountDups{
+%   val N = 500000; // size of arrays
+%   val a = new Array[Int](N);
+%   val b = new Array[Int](N);
+
+%   // Each worker will work on a segment of a and 
+%   // a segment of b
+%   val aSegs = 1; // number of segments of a
+%   val aSegSize = N/aSegs
+%   val bSegs = 8; // number of segments of b
+%   val bSegSize = N/bSegs
+%   val numWorkers = aSegs*bSegs; 
+
+%   // A single worker
+%   def Worker(me: Int, toController: ![Int]) = proc{
+%     // This worker will deal with a[aStart..aEnd) 
+%     // and b[bStart..bEnd) 
+%     def aStart = (me/bSegs) * aSegSize;
+%     def aEnd = (me/bSegs + 1) * aSegSize;
+%     def bStart = (me%bSegs) * bSegSize;
+%     def bEnd = (me%bSegs + 1) * bSegSize;
+
+%     // Put all b elements in hash table
+%     // val bHash = new java.util.HashSet[Int](bSegSize*2);
+%     // for(i <- bStart until bEnd) bHash.add(b(i));
+%     val bHash = new scala.collection.mutable.HashSet[Int];
+%     for(i <- bStart until bEnd) bHash += b(i);
+
+%     // Now iterate through segment of a, counting how 
+%     // many entries are in bHash
+%     var count = 0;
+%     for(i <- aStart until aEnd)
+%       if(bHash.contains(a(i))) count+=1;
+
+%     // Send result to controller
+%     toController!count;
+%   }
+
+%   // The controller
+%   def Controller(toController: ?[Int]){
+%     var count = 0;
+%     for(i <- 0 until numWorkers) count += (toController?);
+%     println(count);
+%   }
+
+%   // Initialise arrays
+%   def Init{
+%     // We set a(i)=i, b(i)=2*i;
+%     for(i <- 0 until N){ a(i)=i; b(i)=2*i; }
+%   }
+
+%   // Construct system
+%   val toController = ManyOne[Int];
+%   def Workers =
+%     || ( for(i <- 0 until numWorkers) yield 
+%            Worker(i, toController) )
+%   def System = Controller(toController) || Workers
+
+%   def main(args:Array[String]) = {
+%     Init; 
+%     val t0 = java.lang.System.currentTimeMillis();
+%     System();
+%     println("Time taken: "+
+%       (java.lang.System.currentTimeMillis()-t0)/1000.0);
+%   }
+% }
+% \end{scala}
+
+% Curiously, the Scala hashtable seems considerably faster than the Java one. 
+% \end{nontuteanswer}

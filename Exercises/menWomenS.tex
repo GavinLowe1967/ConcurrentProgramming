@@ -1,0 +1,79 @@
+\begin{question}
+\Programming\ 
+Recall the men-women problem from question~\ref{Q:menWomenM}.  
+% Recall the following synchronisation problem from the previous
+% sheet.  There are two types of client process, which we shall call \emph{men}
+% and \emph{women}.  These processes need to pair off for some purpose, with
+% each pair containing one process of each type.  Design a class to support
+% this, with public methods
+% \begin{scala}
+%   def manSync(me: String): String = ...
+%   def womanSync(me: String): String = ...
+% \end{scala}
+% %
+% Each process should pass its name to the monitor, and receive back the name of
+% its partner.  
+Implement a class to solve this problem, using semaphores internally.
+Test your code.
+\end{question}
+
+%%%%%
+
+\begin{answer}
+My code is below.  Each round proceeds as follows.
+%
+\begin{enumerate}
+\item[1.] A man waits (on |manWait|) for the previous round to complete, writes
+his name, signals to a woman (on |womanWait|), and waits (on |manWait2|) for a
+signal back;
+
+\item[2.] A woman waits (on |womanWait|) for a man, reads his name, stores her
+name, and signals back (on |manWait2|);
+
+\item[3.] The man reads her name, and signals (on |manWait|) to a man waiting for
+the next round.
+\end{enumerate}
+%
+\begin{scala}
+/** A solution using semaphores. */
+class MenWomenSemaphore extends MenWomen{
+  /** Name of the current (or last) woman. */
+  private var woman = "Alice"
+
+  /** Name of the current (or last) man. */
+  private var man = "Bob"
+
+  /** Semaphore where a man waits initially. */
+  private val manWait = MutexSemaphore()
+
+  /** Semaphore where a woman waits until signalled. */
+  private val womanWait = SignallingSemaphore()
+
+  /** Semaphore where the current man waits for a woman. */
+  private val manWait2 = SignallingSemaphore()
+
+  // The above three semaphores collectively ensure mutual exclusion.
+
+  def manSync(me: String): String = {
+    manWait.down    // wait my turn (1)
+    man = me         // store my name
+    womanWait.up    // signal to a woman at (2)
+    manWait2.down   // wait for an acknowledgement (3)
+    val her = woman // get her name
+    manWait.up       // signal to the next man at (1)
+    her
+  }
+
+  def womanSync(me: String): String = {
+    womanWait.down                // wait for a man (2)
+    woman = me; val him = man // store my name, get his
+    manWait2.up                    // signal to him at (3)
+    him
+  }
+}
+\end{scala}
+
+There are lots of other solutions.
+
+Testing can be done identically to as on previous sheets.
+\end{answer}

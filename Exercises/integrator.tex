@@ -1,0 +1,88 @@
+\begin{nontutequestion}
+\Programming
+\begin{enumerate}
+\item
+Write a definition for a component
+%
+\begin{scala}
+def zipwith[L,R,O](f:(L, R)=>O)(lin:?[L], rin:?[R], out:![O]) = proc{ ... }
+\end{scala}
+%
+which repeatedly inputs values \SCALA{l} and \SCALA{r} on \SCALA{lin} and
+\SCALA{rin}, respectively, and outputs \SCALA{f(l,r)} on \SCALA{out}. 
+
+\item
+An \emph{integrator} is a process with signature
+%
+\begin{scala}
+def integrator(in: ?[Int], out: ![Int]) = ...
+\end{scala}
+that repeatedly inputs on~\SCALA{in}, and outputs on~\SCALA{out} the sums of
+the inputs so far.  That is, if it receives the inputs \SCALA{x1, x2, x3,
+  ...}, it outputs \SCALA{x1, x1+x2, x1+x2+x3, ...}.  Design and implement an
+integrator as a circuit using \SCALA{zipwith} and other common components.
+Draw a diagram to explain your design.  Produce a simple test rig to test the
+integrator. 
+\end{enumerate}
+\end{nontutequestion}
+
+%%%%%
+
+\begin{nontuteanswer} 
+\begin{scala}
+def zipwith[L,R,O](f:(L, R)=>O)(lin:?[L], rin:?[R], out:![O]) = proc{
+  var l = null.asInstanceOf[L]; 
+  var r = null.asInstanceOf[R];
+  repeat { 
+    (proc { l = lin? } || proc { r = rin? })(); 
+    out!f(l, r) 
+  };   
+  lin.close; rin.closein; out.closeout
+}
+\end{scala}
+%
+In fact, this is defined as \SCALA{ox.cso.Components.zipwith}.
+
+For the integrator, we'll use a circuit like before (where the first component
+is a \SCALA{zipwith} using adition.
+%
+\begin{verbatim}
+                in                       out
+ [x,y,z,...] >------>|\    mid     /|-------> [x,x+y,x+y+z,...]
+                     |+}--------->{ |
+                 +-->|/            \|--+
+             addl|                     |back
+                 +------<prefix 0<-----+
+\end{verbatim}
+%
+\begin{scala}
+import ox.CSO._, ox.cso.Components
+
+object Integrator{
+
+  def integrator(in: ?[Int], out: ![Int]) = {
+    val mid, back, addl = OneOne[Int]
+    (  Components.zipwith ((x:Int, y:Int)=>x+y) (in, addl, mid)
+    || Components.tee (mid, List(out, back))
+    || Components.prefix(0)(back, addl)
+    )
+  }
+
+  // Produce stream of nats
+  def nats(out: ![Int]) = proc("nats"){
+    var n = 0;
+    repeat{ out!n; n+=1; sleep(200) }
+  }
+
+  // Test rig, using the above
+  def TestRig = {
+    val in, out = OneOne[Int];
+    ( integrator(in, out) || nats(in) || Components.console(out) )
+  }
+
+  def main(args : Array[String]) = TestRig()
+}
+\end{scala}
+The test rig provides the integrator with naturals, and we can check that we
+get the triangular numbers out.
+\end{nontuteanswer}

@@ -1,0 +1,289 @@
+\begin{question}
+The \emph{region labelling problem} is a problem that occurs in image
+analysis.  
+
+Assume that each pixel in an image is represented by a boolean: $true$
+indicates that the pixel is lit, and $false$ represents that the pixel is
+unlit.  The states of the pixels are stored in an array
+%
+\begin{scala}
+  val a = new Array[Array[Boolean]](N,N);
+\end{scala}
+
+Let the \emph{neighbours} of a pixel be the (up to four) pixels immediately
+above, below, left or right of it.  (Note that the top and bottom rows are not
+considered adjacent, and the left and right columns are not considered
+adjacent.)  Two pixels are in the same \emph{region} if (and only if) there is
+a path from one to the other, where all pixels in the path are lit, and
+successive pixels in the path are neighbours.  For example in the image below,
+there are three regions.
+%
+\begin{center}
+\includegraphics[width=2cm]{regions.eps}
+\end{center}
+
+The aim of this question is to identify the distinct regions and to allocate
+each a unique label.  Each label will be of type:
+%
+\begin{scala}
+  type Coord = Tuple2[Int,Int];
+\end{scala}
+%
+More precisely, the label for each region will be the coordinates of the
+left-most pixel in the top row of the region, i.e., the one that is smallest
+according to the lexicographic ordering.
+%
+%% \begin{scala}
+%%   def smaller(p1:Coord, p2:Coord) : Boolean = {
+%%     val i1=p1._1; val j1 = p1._2; 
+%%     val i2=p2._1; val j2 = p2._2;
+%%     (i1<i2 || i1==i1 && j1<j2)
+%%   }
+%% \end{scala}
+%
+An algorithm to calculate this is initially to label each pixel with its own
+coordinates; and then to repeatedly relabel each pixel with the smallest label
+of itself or its lit neighbours.
+%
+%% \begin{scala}
+%%   for((i1, j1) <- neighbours(i,j))
+%%     if(a(i1)(j1) && smaller(label(i1)(j1), label(i)(j)))
+%%       label(i)(j) = label(i1)(j1)
+%% \end{scala}
+%% %
+%% where \SCALA{neighbours(i,j) : List[Coord]} gives the neighbours of
+%% \SCALA{(i,j)} in some order.
+
+%%%%%
+
+\begin{enumerate}
+\item
+Write a concurrent program to solve the region labelling problem.  The program
+should use \SCALA{p} worker processes (you may assume \SCALA{N\%p = 0}); each
+process should work on \SCALA{height = N/p} rows.  (Each process may use an
+\SCALA{N} by \SCALA{N} array to store the labels, but will only work on a part
+of the array.)  
+
+The worker processes should communicate by message passing only: they may use
+no shared variables except they may all read the array~\SCALA{a}.  They may
+use a barrier synchronisation to determine if they can terminate.
+\marks{20}
+
+%% You should give the definition of a worker, and state carefully what you
+%% assume about any channels you use, but do not need to give an explicit
+%% definition of how the system is constructed. 
+
+%%%%%
+
+\item
+Now suppose a barrier synchronisation operation is not available.  Describe
+the changes necessary to your code.
+\marks{10}
+\end{enumerate}
+
+Your answers to both parts should include suitable test code.
+
+{\bf(Total marks: 30)}
+\end{question}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{answer}
+\Footnotesize
+{\bf Part a.}
+%
+\begin{scala}
+// Region labelling problem
+
+import ox.CSO._
+
+object RegionLabelling{ 
+  val N = 12; // size of array
+  val a = new Array[Array[Boolean]](N,N);
+
+  // Initialise array
+  def Init = 
+    for(i <- 0 until N; j <- 0 until N) 
+      a(i)(j) = (i%3!=1 && j%3!=1)
+//    a(i)(j) = 
+//      (i!=0 && j%2!=0 || i==1 && j%4==0 || i==N-1 && j%4==2)
+
+  val p = 4; // number of workers
+  assert (N%p==0);
+  val height = N/p; // height of one strip
+
+  type Coord = Tuple2[Int,Int]; // Cartesian coordinates
+
+  def smaller(p1:Coord, p2:Coord) : Boolean = {
+    val i1=p1._1; val j1 = p1._2; val i2=p2._1; val j2 = p2._2;
+    (i1<i2 || i1==i1 && j1<j2)
+  }
+
+  // find neighbours of p
+  def neighbours(p:Coord) : List[Coord] = { 
+    val i=p._1; val j=p._2; var ns = Nil : List[Coord];
+    if(i>0) ns = (i-1,j)::ns; if(i<N-1) ns = (i+1,j)::ns;
+    if(j>0) ns = (i,j-1)::ns; if(j<N-1) ns = (i,j+1)::ns;
+    ns;
+  }
+
+  // Type of messages, one row of array
+  type Msg = Array[Coord]
+
+  // Combining barrier
+  def and(b1:Boolean,b2:Boolean) = b1 && b2
+  val barrier = new CombiningBarrier(p, true, and);
+
+  def Worker(me: Int, sendUp: ![Msg], sendDown: ![Msg], 
+	     receiveUp: ?[Msg], receiveDown: ?[Msg]) 
+  = proc("Worker"+me){
+    // This worker deals with rows [start .. end)
+    val start = me*height; val end = start+height;
+
+    val myLabels = new Array[Array[Coord]](N, N);
+    for(i <- 0 until N; j <- 0 until N) 
+      if(a(i)(j)) myLabels(i)(j) = (i, j);
+
+    var done = false;
+
+    while(!done){
+      var myDone = true;
+      // Update coordinates
+      for(i <- start until end; j <- 0 until N){
+	if(a(i)(j)){
+	  for( (i1, j1) <- neighbours(i,j) )
+	    if(a(i1)(j1) && 
+               smaller(myLabels(i1)(j1), myLabels(i)(j))){
+	      myLabels(i)(j) = myLabels(i1)(j1); myDone = false;
+	    }
+	}
+      }
+      // Distribute top and bottom rows	  
+      if(me!=0) sendUp! myLabels(start).toArray; 
+      if(me!=p-1) sendDown! myLabels(end-1).toArray
+      // Receive new top and bottom rows
+      if(me!=0) myLabels(start-1) = receiveDown?;
+      if(me!=p-1) myLabels(end) = receiveUp?;
+      done = barrier.sync(myDone);
+    }
+
+    // Print results in order of process number, 
+    // using down channels as signals
+    if(me!=0) receiveDown?; // Wait for previous process
+    // Print my rows
+    for(i <- start until end){
+      print(i+"\t");
+      for(j <- 0 until N) print(myLabels(i)(j)+"\t");
+      println;
+    }
+    if(me!=p-1) sendDown!myLabels(height); // Signal to next row
+  }
+
+  // Put it together
+  val ups = Buf[Msg](1,p); val downs = Buf[Msg](1,p); 
+    // indexed by senders
+
+  def System = 
+    || ( for(i <- 0 until p) yield 
+        Worker(i, ups(i), downs(i), 
+               ups((i+1)%p), downs((i+p-1)%p))
+      )
+
+  def main(args:Array[String]){
+    Init; System();
+  }
+}
+\end{scala}
+
+
+
+
+
+
+%% (a) Well assume buffered channels with capacity~1, connected as the names
+%%   suggest.
+%% %
+%% \begin{scala}
+%% // Type of messages, one row of array
+%% type Msg = Array[Coord]
+
+%% // Combining barrier
+%% def and(b1:Boolean,b2:Boolean) = b1 && b2
+%% val barrier = new CombiningBarrier(p, true, and);
+
+%% def Worker(me: Int, sendUp: ![Msg], sendDown: ![Msg], 
+%%            receiveUp: ?[Msg], receiveDown: ?[Msg]) 
+%% = proc("Worker"+me){
+%%   // This worker deals with rows [start .. end)
+%%   val start = me*height; val end = start+height;
+
+%%   val myLabels = new Array[Array[Coord]](N, N);
+%%   for(i <- 0 until N; j <- 0 until N) 
+%%     if(a(i)(j)) myLabels(i)(j) = (i, j);
+
+%%   var done = false;
+
+%%   while(!done){
+%%     var myDone = true;
+%%     // Update coordinates
+%%     for(i <- start until end; j <- 0 until N){
+%%       if(a(i)(j)){
+%%         for( (i1, j1) <- neighbours(i,j) )
+%%           if(a(i1)(j1) && 
+%%              smaller(myLabels(i1)(j1), myLabels(i)(j))){
+%%             myLabels(i)(j) = myLabels(i1)(j1); myDone = false;
+%%           }
+%%       }
+%%     }
+%%     // Distribute top and bottom rows   
+%%     if(me!=0) sendUp! myLabels(start).toArray; 
+%%     if(me!=p-1) sendDown! myLabels(end-1).toArray;
+%%     // Receive new top and bottom rows
+%%     if(me!=0) myLabels(start-1) = receiveDown?;
+%%     if(me!=p-1) myLabels(end) = receiveUp?;
+%%     done = barrier.sync(myDone);
+%%   }
+%% }
+%% \end{scala}
+%% %
+%% [The call to \SCALA{toArray} creates a fresh copy of the array, to avoid
+%%   sharing.] 
+
+%%%%%
+
+(b) We piggy-back the booleans indicating whether processes can terminate onto
+the data.  Define the type of messages by
+%
+\begin{scala}
+type Msg = Tuple2[Array[Coord], Boolean];
+\end{scala}
+%
+And replace the data-passing and global synchronisation by
+%
+\begin{scala}
+if(me==0){
+  // Send my bottom row
+  sendDown! (myLabels(end-1).toArray, myDone); 
+  val (newBelow, b2) = receiveUp?;  // Receive new row below
+  myLabels(end) = newBelow; done = b2;
+}
+else if(me==p-1){
+  val (newAbove, b1) = receiveDown?; // Receive new row above
+  myLabels(start-1) = newAbove; done = b1 && myDone;
+  sendUp! (myLabels(start).toArray, done); // Send my top row
+}
+else{
+  val (newAbove, b1) = receiveDown?; // Receive new row above
+  myLabels(start-1) = newAbove;
+  // Send my bottom row
+  sendDown! (myLabels(end-1).toArray, myDone && b1); 
+  val (newBelow, b2) = receiveUp?;  // Receive new row below
+  myLabels(end) = newBelow; done = b2;
+  sendUp! (myLabels(start).toArray, b2); // Send my top row
+}
+\end{scala}
+%
+The bottom rows are passed down, during which the conjunction of the
+\SCALA{myDone} variables is calculated; then the top rows are passed up with
+the final value of \SCALA{done}.
+\end{answer}

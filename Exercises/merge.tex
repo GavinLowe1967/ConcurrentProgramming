@@ -1,0 +1,85 @@
+\begin{question}
+% \Programming\
+Write a definition for a process
+%
+\begin{scala}
+def Interleave(left: ?[Int], right: ?[Int], out: ![Int]) = proc ...
+\end{scala}
+that inputs two streams of integers on \SCALA{left} and \SCALA{right},
+interleaves them into a single stream (in some order), and outputs that on
+\SCALA{out}.  You should think carefully about what to do when one of the
+streams is closed.  You may not use \SCALA{ox.cso.Components.merge}.
+
+Discuss whether your implementation is \emph{fair} to the two input streams. 
+\end{question}
+
+%%%%%
+
+\begin{answer}
+\Small
+\begin{scala}
+  def Interleave(left: ?[Int], right: ?[Int], out: ![Int]) 
+  = proc("Interleave"){
+    serve(
+      left --> { out!(left?); }
+      | right --> { out!(right?) }
+    )
+    repeat{ out!(left?); }
+    repeat{ out!(right?); }
+    left.close; right.close; out.close;
+  }
+\end{scala}
+%% \begin{scala}
+%% import ox.CSO._
+%% import ox.cso.Components._
+
+%% object Interleave{
+
+%%   // Merge two streams
+%%   def Interleave(left: ?[Int], right: ?[Int], out: ![Int]) 
+%%   = proc("Interleave"){
+%%     serve(
+%%       left --> { out!(left?); }
+%%       | right --> { out!(right?) }
+%%     )
+%%     repeat{ out!(left?); }
+%%     repeat{ out!(right?); }
+%%     out.close;
+%%   }
+
+%%   val random = new scala.util.Random ;
+
+%%   // Produce an ascending stream of n Ints on out
+%%   def Producer(me: Int, n:Int, out: ![Int]) 
+%%   = proc("Producer"){
+%%     for(i <- 0 until n){ 
+%%       val current=random.nextInt(10); 
+%%       println(me+" producing "+current); out!current;
+%%       sleep(random.nextInt(50));
+%%     }
+%%     out.close
+%%   }
+
+%%   val left = OneOne[Int]; 
+%%   val right = OneOne[Int];
+%%   val out = OneOne[Int];
+
+%%   def System(n:Int) = (
+%%     Interleave(left, right, out) || 
+%%     Producer(1, n, left) || Producer(2, n, right)
+%%     || console(out) 
+%%   )
+
+%%   def main(args : Array[String]) = 
+%%     System( 
+%%       if(args.length>0){
+%%         Integer.valueOf(args(0)).intValue()
+%%       } else 10 
+%%     )();
+%% }
+%% \end{scala}
+
+This is fair in the sense that if both channels are ready to communicate, it
+will alternate between them, because that's the sense in which \SCALA{serve}
+is fair. 
+\end{answer}

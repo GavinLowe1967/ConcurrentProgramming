@@ -1,0 +1,59 @@
+\documentclass[fleqn,12pt]{article}
+\usepackage{bigpage,tech,url,javalistings,graphicx,csp-cm}
+\usepackage{questions}
+\def\color#1{}
+\def\Programming{\textbf{[Programming]}}
+
+
+%\questionsonly
+\questionsandanswers
+%\answersonly
+%\nontuteanswersonly
+
+\title{Concurrent Programming: Exercises}
+\author{Gavin Lowe}
+
+\sloppy
+
+\begin{document}
+\maketitle
+
+\section{Misc}
+
+%\input{pipeSort} % *** sort list of N numbers using pipe, A7.3
+
+%\input{pi} % *** Estimating pi: pick random numbers x, y in [0,1);
+           % prob$(x^2+y^2)<1 = \pi/4$. 
+
+\input{smallestCommon} % ***(part) A7.16 smallest common int
+
+\framebox{Drinking Philosophers:} ***
+\url{http://www.cs.utexas.edu/~misra/scannedPdf.dir/DrinkingPhil.pdf} -- MSc
+exam? 
+
+\input{distBagTasks}
+%\framebox{Distributed bag of tasks:} each process has its own bag, as a
+%subprocess, which may pass tasks either to its own process or to another
+%process.  Leads to distributed termination. ***
+%%%%%
+
+\section{Synchronisation}
+
+\input{oneLaneBridge} % ***? A7.11 One-lane bridge
+
+\input{account}
+
+%%%%%
+
+\section{Parallel computation}
+
+\input{regionLabelling} % ***  Region labelling problem (A 3.26, 3.27), using
+% message passing, termination signalled via messages ***
+
+\input{graphSearch} % *** Breadth-first search in a graph
+
+\input{gridMax}
+% *** $N^2$ processes, each has an integer; each should end up with the sum of
+% all the integers.  $O(\log N)$ rounds.
+
+\end{document}

@@ -1,0 +1,325 @@
+\begin{question}
+In the bag-of-tasks pattern, there is normally a single process that holds the
+outstanding tasks.  However, that process can then become a bottle-neck.  The
+aim of this question is to investigate an alternative, where each node holds
+its own bag of tasks, but there is no central controller; i.e.,\ the bag of
+tasks is distributed between the nodes.
+%
+More precisely, each node is composed of two subprocesses, one implementing
+the bag, and the other working on data from the bag:
+%
+\begin{scala}
+  def Bag(me: Int, bagToWorker: ![Data], workerToBag: ?[Data], 
+          get: ?[Data], give: ![Data], done: ?[Unit]) = ...
+
+  def Worker(me: Int, workerToBag: ![Data], 
+             bagToWorker: ?[Data], done: ![Unit]) = ...
+\end{scala}
+%
+The \SCALA{Worker} repeatedly gets a task from its bag (on channel
+\SCALA{bagToWorker}) and, as a result, puts zero or more tasks back into the
+bag (via channel \SCALA{workerToBag}), and then signals that it has completed
+that task (on channel \SCALA{done}).  You are \emph{not} asked to provide an
+implementation of \SCALA{Worker} for this question.
+
+One way to implement the distributed bag of tasks involves arranging the nodes
+in a (logical) ring.  The \SCALA{Bag} can pass data to its clockwise neighbour
+on the channel \SCALA{give}.  It can accept a task from its anti-clockwise
+neighbour on the channel \SCALA{get}, but only when it has no tasks in its
+own bag.
+
+\begin{enumerate}
+\item
+Give an implementation of the \SCALA{Bag} process.  You do not need to
+consider termination for this part of the question.           \marks{15}
+
+\item
+Now explain how your answer to the previous part can be extended so that the
+system terminates when there are no outstanding tasks.  You should give a
+precise description of your design, but need not produce code.  \marks{10}
+\end{enumerate}
+%% You should implement a system using the distributed-bag-of-tasks pattern to
+%% solve some combinatorial puzzle.  For example, you could pick the \emph{Eight
+%%   Queens Problem} (see \url{http://en.wikipedia.org/wiki/Eight_queens}).
+%% However, you should not pick the \emph{Magic Squares} problem that was
+%% considered in lectures.  (The main point of this question is the
+%% distributed-bag-of-tasks pattern, so you should pick a puzzle with simple
+%% rules; also avoid a puzzle that will take too long to solve.)  If you pick a
+%% puzzle other than the Eight Queens Problem, please include a brief description
+%% of the rules (this part of your report may be copied from a source, with
+%% citation).
+
+%% One issue you will need to address is termination: the system should terminate
+%% when the puzzle if fully solved.  (This part is quite tricky; however, you can
+%% still obtain a good mark if you do not achieve this.)
+
+%% Your answer should include a description of your design and an explanation of
+%% any interesting features.  In particular, you should explain the termination
+%% protocol.
+
+%% \marks{40}
+\end{question}
+
+%%%%%
+
+
+\begin{answer} \mbox{ }
+{\bf Part a.}
+%
+\begin{scala}
+  def Bag(me: Int, get: ?[Data], give: ![Data], 
+          bagToWorker: ![Data], workerToBag: ?[Data]) 
+  = proc("Bag"+me){
+    // Store the tasks in a stack
+    val stack = new scala.collection.mutable.Stack[Partial];
+    /* Initialise stack in some way */
+
+    var workerBusy = false; // Is the local worker busy?
+ 
+    // Main loop
+    while(true){
+      if(!workerBusy)
+        if(!stack.isEmpty){ // Send task to worker
+	  val p = stack.pop; 
+	  prialt(
+	    toWorker -!-> { toWorker!p; workerBusy = true; }
+	    | give -!-> { give!p; }
+	  )
+	} 
+	else{ val p = get?; toWorker!p; workerBusy = true; }
+      else // workerBusy
+        prialt(
+	  (!stack.isEmpty &&& give) -!-> { give!(stack.pop); }
+	  | fromWorker -?-> { 
+              val p = fromWorker?; stack.push(p); 
+            }
+	  | done -?-> { done?; workerBusy = false; }
+	)
+      }
+    }
+\end{scala}
+%
+The priorities are chosen so as try to speed up distribution of tasks.
+[3 marks for some discussion of priorities.]
+
+%%%%%
+
+\noindent
+{\bf Part b.}
+%
+We arrange to send messages corresponding to the termination protocol on the
+\SCALA{get}/\SCALA{give} channels.  This is best done by changing the type of
+those channels to some abstract type \SCALA{Msg}, with two subtypes:
+\SCALA{Data} (as above) and \SCALA{Terminating} (for tokens in the termination
+protocol). 
+
+The termination protocol is initiated by Bag~0 when its stack is empty and its
+worker is idle.  It sends a \SCALA{Terminating} token round the ring, on the
+same channels as for the passing of partial solutions.  Each subsequent node
+receives the token only when it is idle (the only time it receives on
+\SCALA{Get}), and passes it on.  If node~0 receives the token back and it has
+been idle ever since starting the termination protocol, then the whole system
+can terminate: it circulates the token again, with a flag set, to indicate
+this.  If it becomes busy after initiating the termination protocol, it has to
+wait until it receives the token back before it re-tries the termination
+protocol.  Therefore this node has to keep track of whether it is: not
+currently involved in the termination protocol; involved in the termination
+protocol; or has aborted the termination protocol and is waiting to receive
+the token back.
+
+Code is not required, but the code below illustrates this, with an application
+to solve the Eight Queens Problem.  [Note to tutors: I suggest you give this
+  to students to study in their own time.]
+%
+The class \SCALA{Partial} (replacing \SCALA{Data}) represents a partial
+solution to the puzzle.  See comments.
+
+\JavaSize{\footnotesize}
+\begin{scala}
+// The 8 queens problem
+
+import ox.CSO._;
+
+abstract class Msg;
+
+// Class to represent a partial solution
+
+case class Partial(N:Int) extends Msg{
+  // Represent partial solution by a list of Ints; the ith 
+  // entry represents the row number of the queen in column i 
+  // (0 <= i < len).  len is the length of board
+  private var board : List[Int] = Nil;
+  private var len = 0;
+
+  def finished : Boolean = (len==N);
+
+  // Is it legal to play in column len, row j?
+  private def isLegal(j : Int) = {
+    // is piece (i1,j1) on different diagonal from (len,j)?
+    def otherDiag(p:(Int,Int)) = { 
+      val i1=p._1; val j1 = p._2; i1-len!=j1-j && i1-len!=j-j1; 
+    };
+    
+    (board forall ((j1:Int) => j1 != j)) && 
+      // row j not already used
+    (List.range(0,len) zip board forall otherDiag) 
+      // diagonals not used
+  }
+
+  // Return new partial resulting from playing in row j next
+  private def doMove(j : Int) : Partial = {
+    val newPartial = new Partial(N);
+    newPartial.board = this.board ::: (j :: Nil);
+    newPartial.len = this.len+1;
+    return newPartial;
+  }
+
+  // Return list of successors, such that every solution to 
+  // this is a solution of one of the successors
+  def successors : List[Partial] = 
+    for(j <- List.range(0, N) if(isLegal(j))) yield doMove(j);
+
+  override def toString : String = {
+    var st = "";
+    for(i <- 0 until len) st = st + (i,board(i))+"\t";
+    return st;
+  }
+}
+
+// Class of messages used in testing for termination
+
+case class Terminating(status:Boolean) extends Msg{ }
+// Status of false means this is a probe if we can terminate; 
+// status of true means terminate now
+
+// The main object
+object EightQueens{
+  val N = 8; // size of board
+
+  // A worker.  This node can get a partial solution from its 
+  // anticlockwise neighbour on channel get; it can give a
+  // partial solution to its clockwise neighbour on channel give
+  def Node(me: Int, get: ?[Msg], give: ![Msg])
+  = proc("Node"+me){
+
+    // Process to maintain this bag of tasks
+    def Bag(toWorker: ![Partial], fromWorker: ?[Partial], 
+            done: ?[Unit]) 
+    = proc("Bag"+me){
+      // Store the tasks in a stack
+      val stack = new scala.collection.mutable.Stack[Partial];
+      if(me==0)	stack.push(new Partial(N)); // Starting position
+
+      var workerBusy = false; // Is the local worker busy?
+      var finished = false; // Becomes true when we can terminate
+
+      // Status of termination protocol, node 0 only
+      val NONTERM = 0; val TRYING = 1; val ABORTED = 2;
+      var terminationStatus = NONTERM; 
+      // NONTERM means not currently involved in termination 
+      // protocol; TRYING means termination protocol started, 
+      // and this node has been idle since then; ABORTED means 
+      // termination protocol was started, and this node then 
+      // became busy, but the protocol hasn't yet terminated. 
+ 
+      // Main loop
+      while(!finished){
+	if(!workerBusy)
+	  if(!stack.isEmpty){ // Send task to worker
+	    val p = stack.pop; 
+	    prialt(
+	      toWorker -!-> { toWorker!p; workerBusy = true; }
+	      | give -!-> { give!p; }
+	    )
+	  } 
+	  else{ // Idle, so wait for message from neighbour
+	    if(me==0 && terminationStatus==NONTERM){
+	      // Initiate termination protocol
+	      println("Termination protocol starting");
+	      give!Terminating(false);
+	      terminationStatus = TRYING;
+	    }
+	    val m:Msg = get?;
+	    m match {
+	      case Partial(n) => {
+		toWorker!m.asInstanceOf[Partial]; 
+		workerBusy = true;
+		if(me==0 && terminationStatus==TRYING){
+		  println("Termination protocol aborted");
+		  terminationStatus = ABORTED;
+		}
+	      }
+	      case Terminating(s) => {
+		if(me==0){
+		  if(terminationStatus==TRYING){
+		    // We've received nothing since sending the 
+		    // termination probe, so we can terminate
+		    give!Terminating(true); 
+                      // pass signal to next node
+		    toWorker.close; // Tell worker to close
+		    get?; // Receive termination signal back
+		    finished = true; // Can terminate
+		  }
+		  else if(terminationStatus==ABORTED){
+		    terminationStatus = NONTERM;
+		    println("Ready to retry termination protocol");
+		  }
+		}
+		else{ // me!=0 
+		  give!m; // pass signal on
+		  if(s){ finished = true; toWorker.close; } 
+                    // terminating
+		}
+	      } // end of case Terminating(s)
+	    } // end of match
+	  }
+	else // workerBusy
+	  prialt(
+	    (!stack.isEmpty &&& give) -!-> { give!(stack.pop); }
+	    | fromWorker -?-> { 
+                val p = fromWorker?; stack.push(p); 
+              }
+	    | done -?-> { done?; workerBusy = false; }
+	  )
+      }
+    }
+
+    // Process to work on partial solutions
+    def Worker(toBag: ![Partial], fromBag: ?[Partial], 
+               done: ![Unit])
+    = proc("Worker"+me){
+      repeat{
+	val partial = fromBag? ; // get job
+	if(partial.finished){ println(partial); } // done!
+	else // Generate all next-states
+	  for(p1 <- partial.successors) toBag!p1; 
+	// sleep(10); 
+	done!();
+      }
+    }
+
+    // Put this node together
+    val bagToWorker, workerToBag = OneOne[Partial];
+    val done = OneOne[Unit];
+    def ThisNode = (
+      Bag(bagToWorker, workerToBag, done) || 
+      Worker(workerToBag, bagToWorker, done)
+    );
+    ThisNode();
+  }
+
+  val p = 8; // Number of workers
+
+  // Put system together
+
+  val passPartial = OneOne[Msg](p); // indexed by recipient's id
+
+  def System = 
+    || ( for(i <- 0 until p) yield 
+           Node(i, passPartial(i), passPartial((i+1)%p)) )
+
+  def main(args: Array[String]) = System();
+
+}
+\end{scala}
+\end{answer}

@@ -1,0 +1,83 @@
+\begin{question}
+Consider a class representing a bounded queue of integers with the following
+interface. 
+%
+\begin{scala}
+class Queue{
+  def add(value:Int) 
+  // Add value to the queue.  
+  // Precondition: the queue is not full.
+
+  def remove : Int
+  // Remove and return the first element of the queue.
+  // Precondition: the queue is not empty.
+
+  def isFull : Bool
+  // Test whether the queue is full.
+
+  def isEmpty : Bool
+  // Test whether the queue is empty.
+}
+\end{scala}
+%
+Assume that each operation is executed atomically.
+
+\begin{enumerate}
+\item
+Which pairs of operations are independent?
+
+\item
+Suppose the queue is shared by two processes:
+\begin{itemize}
+\item
+A \emph{producer}, which (repeatedly) waits until the queue is not full
+(tested by repeatedly calling \SCALA{isFull}) and then adds a value to the
+queue; 
+
+\item
+A \emph{consumer}, which (repeatedly) waits until the queue is not empty
+(tested by repeatedly calling \SCALA{isEmpty}) and then removes a value from
+the queue.
+\end{itemize}
+%
+Define a \emph{bad} interleaving of the executions of the processes to be
+where an operation is called when its precondition does not hold.  Explain why
+no bad interleaving can occur.
+
+\item
+Now suppose there are two consumers and one producer.  Show that bad
+interleavings can occur.
+\end{enumerate}
+
+
+\end{question}
+
+%%%%%
+
+\begin{answer}
+\begin{enumerate}
+\item
+The following pairs of operations are \emph{not} independent: 
+\begin{scala}
+(ifFull, remove), (isEmpty, add), 
+(add, add), (remove, remove), (add, remove)
+\end{scala}
+The last pair is independent when executed such that the preconditions hold. 
+
+\item
+The producer waits until \SCALA{isFull} returns false before attempting
+\SCALA{add}.  There may actions by the consumer between those two producer
+actions, but they will not make the queue full.  Hence the precondition of
+\SCALA{add} holds.
+
+Similarly, actions by the producer between the consumer testing
+\SCALA{isEmpty} and calling \SCALA{remove} cannot make the queue empty, so the
+precondition of \SCALA{remove} will hold.
+
+\item
+Suppose the queue contains one item.  Both consumers test \SCALA{isEmpty},
+which returns false.  Now the first consumer calls \SCALA{remove}, which
+succeeds, but leaves the queue empty.  Now when the second consumer calls
+remove, it fails.
+\end{enumerate}
+\end{answer}

@@ -1,0 +1,178 @@
+\begin{question}
+\Programming\
+The example of Jacobi iteration from the lectures made the array \SCALA{x} a
+shared variable.  Convert the program into a message-passing program, where
+each process calculates some of \SCALA{x} and sends it to the others.  The
+only variables shared by the processes should be read-only variables.
+\end{question}
+
+%%%%%
+
+\begin{answer}
+In the solution below, each worker calculates its share of the next iteration
+in \SCALA{newX}.  They then exchange these shares, so they all hold the same
+value of~\SCALA{x}.
+
+We use buffered channels, indexed by the receivers' identities.  Each
+communication includes the portion of \SCALA{x} calculated, the identity of
+the worker who produced it (so others know where it should be inserted
+in~\SCALA{x}), and the value of the producing worker's \SCALA{done} variable.
+
+Note that a barrier synchronisation is needed at the end of each iteration;
+otherwise unfortunate scheduling could lead to a worker receiving in one
+iteration values from the following iteration.  This could be avoided by each
+worker ensuring that it has received from all the other workers before
+continuing. 
+%
+\begin{scala}
+import ox.CSO._
+
+// Jacobi iteration to solve Ax = b
+
+object JacobiMP0{
+  val N = 4000; // size of array
+  val A = new Array[Array[Double]](N,N);
+  val b =  new Array[Double](N)
+
+  val EPSILON = 0.000001; // tolerance
+  val p = 8; // number of processes
+  assert(N%p == 0);
+  val height = N/p; // height of one strip
+
+  // Synchronisation and communication
+  val barrier = new Barrier(p)
+  // Messages are triples: worker identity, new segment
+  // of x, is that worker willing to terminate?
+  type Msg = Tuple3[Int, Array[Double], Boolean];
+  val toWorker = Buf[Msg](p-1,p)
+
+  // Worker to handle rows start to end-1
+  def Worker(me: Int) = proc{
+    val start = me*height; val end = (me+1)*height;
+    var done = false;
+    val x = new Array[Double](N);
+    val newX = new Array[Double](height); 
+    // newX(i) holds the new value of x(i+start)
+
+    while(!done){
+      done = true; 
+      // Update this section of x, storing results in newX
+      for(i <- start until end){
+	var sum:Double=0;
+	for(j <- 0 until N) if(j!=i) sum += A(i)(j)*x(j);
+	newX(i-start) = (b(i)-sum) / A(i)(i);
+	done &&= Math.abs(x(i)-newX(i-start)) < EPSILON;
+      }
+
+      // Send this section to all other processes
+      for(w <- 1 until p) 
+        toWorker((me+w)%p)!(me, newX, done);
+
+      // Copy newX into x
+      for(i <- 0 until height) x(start+i) = newX(i);
+
+      // Receive from others
+      for(k <- 0 until p-1){
+	val (him, hisX, hisDone) = toWorker(me)?;
+	for(i <- 0 until height) x(him*height+i) = hisX(i);
+	done &&= hisDone
+      }
+
+      barrier.sync;
+    }
+    if(me==0 && N<20) Print(x);
+  }
+
+  def System = || (for (i <- 0 until p) yield Worker(i));
+
+  // Initialise so that A(i)(i) = (i+1)*N; A(i)(j) = 1 
+  // for i!=j; b(i) = N;
+  def Init = {
+    for(i <- 0 until N) A(i)(i) = (i+1)*N;
+    for(i <- 0 until N; j <- 0 until N) 
+      if(i!=j) A(i)(j) = 1;
+    for(i <- 0 until N) b(i) = N;
+  }
+
+  def Print(x:Array[Double]) = {
+    for(i <- 0 until N){
+      for(j <- 0 until N) printf("%2.4f\t", A(i)(j));
+      printf("|%2.4f| = |%2.4f|", x(i), b(i));
+      println; 
+    }
+    println
+  }
+
+  def main(args:Array[String]) = {
+    val t0 = java.lang.System.currentTimeMillis();
+    for(i <- 0 until 1){
+      Init; System();
+    }
+    println("Time taken: "+
+            (java.lang.System.currentTimeMillis()-t0));
+  }
+}
+\end{scala}
+
+That version is a bit inefficient, since it involves copying the data that is
+received into~\SCALA{x}.  The following version replaces \SCALA{x} by a two
+dimensional array \SCALA{xs}, indexed by the identity of the worker who
+produced it, and the displacement within that segment.  The copying is now
+replaced by copying of references.  
+
+Note that it's important for each worker to set \SCALA{xs} to be a new array
+on each iteration, since objects are passed on channels by reference, and we
+need to ensure that different workers do not share references. 
+
+\begin{scala}
+def Worker(me: Int) = proc{
+  val start = me*height; val end = (me+1)*height;
+  var done = false;
+  // val x = new Array[Double](N);
+  val xs = new Array[Array[Double]](p,height)
+  // xs(k)(i) holds x(k*height+i)
+
+  while(!done){
+    val newX = new Array[Double](height); 
+    // newX(i) holds the new value of x(i+start)
+     
+    done = true; 
+    // Update this section of x, storing results in newX
+    for(i1 <- 0 until height){
+      val i = start+i1
+      var sum:Double=0;
+      for(k <- 0 until p; j1 <- 0 until height){
+        val j = k*height+j1; 
+        if(j!=i) sum += A(i)(j)*xs(k)(j1);
+      }
+      newX(i1) = (b(i)-sum) / A(i)(i);
+      done &&= Math.abs(xs(me)(i1)-newX(i1)) < EPSILON;
+    }
+
+    // Send this section to all other processes
+    for(w <- 1 until p) 
+      toWorker((me+w)%p)!(me, newX, done);
+
+    // Copy newX into x
+    xs(me) = newX;
+
+    // Receive from others
+    for(k <- 0 until p-1){
+      val (him, hisX, hisDone) = toWorker(me)?;
+      xs(him) = hisX;
+      done &&= hisDone
+    }
+      
+    barrier.sync;
+  }
+  if(me==0 && N<20) Print(xs);
+}
+\end{scala}
+%
+(\SCALA{Print} needs to be adapted to deal with the new type.)
+
+In my experiments (parameters as above; eight-processor machine) the first
+message-passing program is similar in speed to the shared-variable version
+from lectures, but the second one is about 25\% faster.
+
+\end{answer}

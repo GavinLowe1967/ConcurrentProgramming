@@ -1,0 +1,133 @@
+\begin{question}
+Consider the following synchronisation problem.  There are two types of
+process, which we shall call Men and Women.  These processes need to pair off,
+one of each type, for some purpose.  A monitor is required, with a procedure
+for each type of process.  The procedure should block processes until a
+process of the other type is ready, at which point both should continue.
+
+\begin{enumerate}
+\item
+The following monitor was suggested.  Explain why this does not meet the
+requirement. 
+%
+\begin{scala}
+object Monitor1{
+  var menWaiting = 0; var womenWaiting = 0; 
+    // number of men, women currently waiting
+  var manCommitted, womanCommitted = false;
+    // Have the next man, woman to return been decided but not yet paired?
+
+  def ManEnter = synchronized{
+    if(womenWaiting==0 && !womanCommitted){
+      menWaiting += 1;
+      while(womenWaiting==0 && !womanCommitted) wait(); // wait for a woman
+      menWaiting -= 1; womanCommitted = false;
+    }
+    else{ manCommitted = true; notify(); } // wake up a man
+  }
+
+  def WomanEnter = synchronized{
+     if(menWaiting==0 && !manCommitted){
+        womenWaiting += 1;
+        while(menWaiting==0 && !manCommitted) wait(); // wait for a man
+        womenWaiting -= 1; manCommitted = false;
+     }
+     else{ womanCommitted = true; notify(); } // wake up a woman
+  }
+}
+\end{scala}
+
+\item
+Now the following monitor is suggested.  Explain why this doesn't meet the
+requirement, either.
+%
+\begin{scala}
+object Monitor2{
+  var menWaiting = 0; var womenWaiting = 0; 
+    // number of men, women currently waiting
+  var manCommitted, womanCommitted = false;
+    // Have the next man, woman to return been decided but not yet paired?
+
+  def ManEnter = synchronized{
+    if(womenWaiting==0 && !womanCommitted || manCommitted){
+      menWaiting += 1;
+      while(womenWaiting==0 && !womanCommitted || manCommitted) 
+        wait(); // wait for a woman
+      menWaiting -= 1; womanCommitted = false;
+    }
+    else{ manCommitted = true; notifyAll(); } // wake up a man
+  }
+
+  def WomanEnter = synchronized{
+    if(menWaiting==0 && !manCommitted || womanCommitted){
+      womenWaiting += 1;
+      while(menWaiting==0 && !manCommitted || womanCommitted)
+        wait(); // wait for a man
+      womenWaiting -= 1; manCommitted = false;
+    }
+    else{ womanCommitted = true; notifyAll(); } // wake up a woman
+  }
+}
+\end{scala}
+
+\item
+Suggest a definition for the module that does meet the requirement.
+\end{enumerate}
+\end{question}
+
+%%%%%
+
+\begin{answer}
+
+
+  /*
+  This doesn't work. 
+
+  1. A man enters and waits (so menWaiting = 1)
+
+  2. A woman enters, finds menWaiting>0, so sets womanCommitted = true, does
+  notify() and exits;
+
+  3. A second woman enters, finds menWaiting>0, so sets womanCommitted = true,
+  does notify() and exits.
+
+  So the poor man ends up with two women.
+  */
+
+  /*
+  This doesn't work either.
+
+  1. Men 1 and 2 enter and wait (so menWaiting = 2).
+
+  2. Woman 3 enters, finds menWaiting>0, so sets womanCommitted = true, does
+  notifyAll() and exits.
+
+  3. Woman 4 enters (before any man is scheduled), and waits (since
+  womanCommitted = true), setting womenWaiting = 1.
+
+  4. Man 1 is scheduled, sets womanCommitted = false, menWaiting = 1, and
+  exits (paired with woman 3).
+
+  5. Man 2 is scheduled, finds womenWaiting = 1 and so exits.
+
+  So poor woman 3 ends up with two men.
+  */
+
+  object Monitor3{
+    var menWaiting = 0; var womenWaiting = 0; 
+      // number of men, women currently waiting
+    var manCommitted, womanCommitted = false;
+      // Have the next man, woman to return been decided but not yet paired?
+
+    def ManEnter = synchronized{
+      menWaiting += 1;
+      while(womenWaiting==0 && !womanCommitted || manCommitted) 
+	wait(); // wait for a woman
+      menWaiting -= 1; manCommitted = true; 
+      if(!womanCommitted) notifyAll() 
+      else{ manCommitted = false; womanCommitted = false; }
+//       println("Man exits (1); "+menWaiting+"\t"+womenWaiting+"\t"+
+// 	      manCommitted+"\t"+womanCommitted)
+    }
+
+\end{answer}

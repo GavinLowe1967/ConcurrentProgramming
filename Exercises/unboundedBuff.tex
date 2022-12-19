@@ -1,0 +1,78 @@
+\begin{question}
+% \Programming\
+Implement an unbounded buffer as a process:
+%
+\begin{scala}
+def buff[T](in: ?[T], out: ![T]) = proc{ ... }
+\end{scala}
+%
+The process should always be willing to input on \SCALA{in}; it should output
+data on \SCALA{out} in the order in which they were received, and should be
+willing to output whenever it has input data that have not yet been output. 
+
+{\bf Hint:} you might want to use an instance of a
+\SCALA{scala.collection.mutable.Queue} to store the current values held in the
+buffer.
+\end{question}
+
+%%%%%
+
+\begin{answer}
+\Small
+\begin{scala}
+  def buff[T](in: ?[T], out: ![T]) = proc{
+    var queue = new scala.collection.mutable.Queue[T]
+
+    serve(
+      in =?=> { x => queue.enqueue(x) }
+      | (queue.nonEmpty && out) =!=> { queue.dequeue }
+    )
+  }
+\end{scala}
+%
+We will discuss testing of datatypes like this later in the course.  For the
+moment, I would expect to see some testing involving some threads passing in
+pre-defined sequences of values, and other threads taking the outputs and
+writing them into global variables, and then checking that the outputs are a
+permutation of the inputs. 
+%
+%% The testing harness is designed to allow data to accumulate in the buffer ---
+%% and that's what the test results show.
+\end{answer}
+%% \begin{answer}
+%% \begin{scala}
+%% import ox.CSO._
+
+%% object UnboundedBuff{
+%%   // Unbounded buffer
+%%   def Buff[T](in: ?[T], out: ![T]) = proc{
+%%     var queue = new scala.collection.mutable.Queue[T];
+
+%%     serve(
+%%       in -?-> { queue.enqueue(in?); }
+%%       | (!queue.isEmpty &&& out) -!-> { out!(queue.dequeue); }
+%%     )
+%%   }
+
+%%   // Produce stream of nats
+%%   def Nats(out: ![Int]) = proc("nats"){
+%%     var n = 0;
+%%     repeat{ out!n; println("Sent "+n); n+=1; sleep(400) }
+%%   }
+
+%%   // Consume and print numbers at random intervals
+%%   def Console(in: ?[Int]) = proc{
+%%     val random = new scala.util.Random;
+%%     repeat{ sleep(random.nextInt(1000)); println(in?); }
+%%   }
+
+%%   val in, out = OneOne[Int];
+%%   def System = Nats(in) || Buff(in, out) || Console(out)
+
+%%   def main(args : Array[String]) = System()
+%% }
+%% \end{scala}
+%% %
+%% The testing harness is designed to allow data to accumulate in the buffer ---
+%% and that's what the test results show.
+%% \end{answer}

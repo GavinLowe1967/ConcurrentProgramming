@@ -1,0 +1,192 @@
+\begin{question}
+\def\integral#1#2{\int_{#1}^{#2} f(x)\,\mbox{d}x} 
+%
+\Programming\ Recall the trapezium rule, used for estimating integrals,
+discussed in the third chapter.  \emph{Adaptive quadrature} is an
+alternative approach that proceeds as follows.  In order to calculate
+$\integral{a}{b}$, first compute the midpoint $mid = (a+b)/2$.  Then estimate
+three integrals, $\integral{a}{mid}$, $\integral{mid}{b}$ and
+$\integral{a}{b}$, each using the trapezium rule with a single interval.  If
+the sum of the former two estimates is within some value $\epsilon$ of the
+third, then we take that third estimate as being the result.  Otherwise,
+recursively estimate the integrals over the two ranges $a$ to~$mid$ and $mid$
+to~$b$, and sum the results.  The following sequential algorithm captures this
+idea:
+%
+\begin{scala}
+  /** Estimate the integral of f from a to b using adaptive quadrature. */
+  def estimate(f: Double => Double, a: Double, b: Double) : Double = {
+    val mid = (a+b)/2.0
+    val fa = f(a); val fb = f(b); val fmid = f(mid)
+    val lArea = (fa+fmid)*(mid-a)/2; val rArea = (fmid+fb)*(b-mid)/2
+    val area = (fa+fb)*(b-a)/2
+    if (Math.abs(lArea+rArea-area) < Epsilon) area
+    else estimate(f,a,mid) + estimate(f,mid,b)
+  }
+\end{scala}
+
+Write a concurrent program to implement adaptive quadrature.  Give your
+program the following signature:
+\begin{scala}
+class Adaptive(f: Double => Double, a: Double, b: Double, Epsilon: Double, nWorkers: Int){
+  require(a <= b)
+
+  def apply(): Double = ...
+}
+\end{scala}
+%
+The program should use a bag of tasks with replacement: the two recursive
+calls in the sequential version can be implemented by returning tasks to the
+bag.  The bag of tasks needs to store the tasks still to be performed: use
+either a |Queue| or a |Stack| for this.  You will have to think carefully
+about when the system should terminate.
+
+A test harness for this program is on the course website (making use of the
+class |TrapeziumTest| from lectures).  Use this to test your code. 
+%%%%% /users/gavinl/Teaching/CP/Scala/Trapezium.AdaptiveTest.scala
+
+Suggest ways in which your program can be made more efficient; optional:
+implement them.
+\end{question}
+
+%%%%%
+
+\begin{answer}
+%% We will build a system as illustrated below.
+%% %
+%% \begin{center}
+%% \begin{tikzpicture}
+%% \draw(0,0) node[draw] (bag) {\scalashape bag};
+%% \draw (3,0) node[draw] (worker) {\scalashape workers};
+%% \draw 
+%% %% \draw (worker.north east)++(0.2,0.2) node (control1) {};
+%% %% \draw (worker.south east)++(0.2,0.2) node (control2) {};
+%% %% \draw (worker.north west)++(0.2,0) -- ++ (0,0.2) -- (control1) --
+%% %% (worker.south east)++(0.2,0.2); %(control2);
+%% \end{tikzpicture}
+%% \end{center}
+My code is below.  To support termination, the bag keeps track of the
+number of workers currently working on a task; a worker informs the
+bag that it has completed a task via the channel |done|.  When the bag
+is empty and there are no busy workers, the bag closes the channels to
+terminate the system.
+%
+\begin{scala}
+/** Calculating integral, using trapezium rule, adaptive quadrature, and bag
+  * of tasks pattern. */
+class Adaptive(f: Double => Double, a: Double, b: Double, Epsilon: Double, nWorkers: Int){
+  require(a <= b)
+
+  /** A task is an interval on which to work. */
+  private type Task = (Double, Double)
+
+  /** Channel from the controller to the workers, to distribute tasks.  We
+    * create the channel freshly for each run of the system. */
+  private val toWorkers = OneMany[Task] 
+
+  /** Channel from the workers to the bag, to return subtasks. */
+  private val toBag = ManyOne[(Task,Task)]
+
+  /** Channel from the workers to the adder process, to add up subresults. */
+  private val toAdder = ManyOne[Double]
+
+  /** Channel to indicate to the bag that a worker has completed a task. */
+  private val done = ManyOne[Unit]
+
+  /** A client, who receives arguments from the server, either estimates the
+    * integral directly or returns new tasks to the bag. */
+  private def worker = proc("worker"){
+    repeat{
+      val (a,b) = toWorkers?()
+      val mid = (a+b)/2.0
+      val fa = f(a); val fb = f(b); val fmid = f(mid)
+      val lArea = (fa+fmid)*(mid-a)/2; val rArea = (fmid+fb)*(b-mid)/2
+      val area = (fa+fb)*(b-a)/2
+      if (Math.abs(lArea+rArea-area) < Epsilon) toAdder!area
+      else toBag!((a,mid), (mid,b)) 
+      done!(())
+    }
+  }
+
+  /** The bag, that keeps track of jobs pending. */
+  private def bag = proc("bag"){
+    val stack = new scala.collection.mutable.Stack[Task]
+    stack.push((a,b))
+    var busyWorkers = 0 // # workers with tasks
+
+    serve(
+      (stack.nonEmpty && toWorkers) =!=> { busyWorkers += 1; stack.pop }
+      | (busyWorkers > 0 && toBag) =?=> { case (t1,t2) =>
+          stack.push(t1); stack.push(t2) }
+      | (busyWorkers > 0 && done) =?=> { _ => busyWorkers -= 1 }
+    )
+    // busyWorkers == 0 && stack.isEmpty
+    toWorkers.close; toAdder.close
+  }
+
+  private var result = 0.0
+
+  // Process to receive results from workers and add up the results
+  private def adder = proc("adder"){ repeat{ result += (toAdder?()) } }
+
+  def apply(): Double = {
+    val workers = || (for (i <- 0 until nWorkers) yield worker)
+    run(workers || bag || adder)
+    result
+  }
+}
+\end{scala}
+
+%% Testing can be done in a very similar way to as in lectures, by testing
+%% against a sequential implementation.  The main part of my code is below.  The
+%% function |pickParams| picks parameters.  The function |estimate| is as in the
+%% question.
+%% %
+%% \begin{scala}
+%%   /** Do a single test. */
+%%   def doTest = {
+%%     val (f, p, a, b, nWorkers) = pickParams
+%%     val seqResult = estimate(f, a, b)
+%%     val concResult = new Adaptive(f, a, b, Epsilon, nWorkers)()
+%%     assert(
+%%       seqResult != 0.0 && Math.abs((seqResult-concResult)/seqResult) < 1E-7 ||
+%%         Math.abs(seqResult-concResult) < 1E-10, ...)
+%%   }
+%% \end{scala}
+
+Here are four ways this could be made more efficient.  Each aims to reduce
+the number of communications (since communications are expensive).
+%
+\begin{itemize}
+\item
+Above the worker returns two tasks to the bag, and then (on the next
+iteration) gets one back, possibly one of the tasks it just put there.  It
+would be more efficient to just return one and to continue calculating with
+the other.  In particular, the bag is likely to be a bottleneck, and this
+reduces the load on the bag.
+
+\item
+The trapezium rule is applied to most intervals twice: once before that
+interval is placed in the bag, and once when it is retrieved.  It would be
+more efficient to put the calculated estimate into the bag along with the
+interval, so it doesn't need to be recalculated.
+
+\item
+We could arrange for a |done| message to be sent only when the worker
+does not return subtasks to the bag: the bag can infer that the worker
+is done in the other case.
+
+\item 
+Each worker could accumulate sub-results in a thread-local variable, and send
+to the adder only at the end. 
+
+% \item
+% We could merge the \SCALA{Adder} with the \SCALA{Bag}, and do away with the
+% \SCALA{done} events.  All the workers will be idle if the number of tasks
+% distributed equals the number of results received, plus half the number of
+% tasks returned to the bag.  (If the change in the first bullet point is
+% implemented, then that condition becomes that the number of tasks
+% distributed equals the number of results received.)
+\end{itemize}
+\end{answer}
+

@@ -1,0 +1,214 @@
+%
+% Designed to work with tex2java to weave java/scala code from latex sources
+% 
+% $Id: javalistings.sty 421 2008-02-16 21:37:15Z sufrin $
+%
+
+% Adapted by Gavin to add colour
+
+\def\codecolour{\color{Plum}}
+
+\ProvidesPackage{javalistings}
+\RequirePackage{breakverbatim}
+\RequirePackage{listings}
+\RequirePackage{ifthen}
+
+%
+% Scala definition
+%
+\lstdefinelanguage{scala}
+  {morekeywords={
+        abstract, case, catch, class, def, 
+        do, else, extends, false, final, 
+        finally, for, forSome, if, implicit, 
+        import, match, new, null, object, 
+        override, package, private, protected, requires, 
+        return, sealed, super, this, throw, 
+        trait, try, true, type, val, 
+        var, while, with, yield,
+        boolean, byte, char, int, long, double, float,
+        synchronized, repeat, break, attempt,
+        proc, prialt, alt, this, stop, before, ontimeout, onclosed, 
+        attempt, serve, after, orelse, priserve,
+        wait, notify, notifyAll,}      
+   sensitive,%
+   morecomment=[l]//,%
+   morecomment=[s]{/*}{*/},%
+   morestring=[b]",%
+   morestring=[b]',%
+  }[keywords,comments,strings]%
+
+\lstset{columns=flexible}
+%
+% Default definition is Java
+%
+\lstset{language=java}
+%
+% Show classes as listings
+%
+\lstnewenvironment{java}
+{
+  \lstset{language=java,
+          basicstyle=\classsize\sffamily}}
+{}
+
+\lstnewenvironment{scala}[1][]
+{
+  \lstset{language=scala,
+          basicstyle=\classsize\sffamily,
+          #1}%
+          %\verbatim@@size=tiny}%
+  \codecolour
+  \let\verbatim@@size=\tiny
+  \def\baselinestretch{1.1}}
+{}
+
+\lstnewenvironment{obj}[1]
+{\ifthenelse{\equal{#1}{.}}{\relax}{\index{#1}}
+  \lstset{language=scala,basicstyle=\classsize\sffamily}}
+{}
+
+\lstnewenvironment{obj*}[2][]
+{\ifthenelse{\equal{#2}{.}}{\relax}{\index{#2}}
+  \lstset{language=scala,basicstyle=\classsize\sffamily,
+          captionpos={b},
+          frame=ltBr,
+          framesep=1ex,
+          rulesep=2pt,#1}}
+{}
+
+
+\lstnewenvironment{class}[1]
+{\ifthenelse{\equal{#1}{.}}{\relax}{\index{#1}}
+  \lstset{basicstyle=\classsize\sffamily}}
+{}
+
+\lstnewenvironment{class*}[2][]
+{\ifthenelse{\equal{#2}{.}}{\relax}{\index{#2}}
+  \lstset{basicstyle=\classsize\sffamily,
+          captionpos={b},
+          frame=B,
+          framesep=2ex,
+          rulesep=2pt,#1}}
+{}
+
+\def\hideclass#1{\index{#1}\comment}
+\let\endhideclass=\endcomment
+\def\hideobj#1{\index{#1}\comment}
+\let\endhideobj=\endcomment
+
+%
+% XML
+%
+\def\xml#1{%
+ \index{#1}
+  \bgroup\let\verbatim@@size=\xmlsize
+  \@verbatim\frenchspacing\@vobeyspaces\verbatim@start}
+\def\endxml{\egroup\endtrivlist}
+
+\def\hidexml#1{\index{#1}\comment}
+\let\endhidexml=\endcomment
+
+\def\JAVA#1{{\sffamily\lstset{language=java}\codecolour\lstinline{#1}}}
+\def\SCALA#1{{\sffamily\lstset{language=scala,basicstyle=\javasize}\codecolour\small\lstinline{#1}}}
+\def\textscala#1{{\ttfamily\lstset{language=scala}\codecolour\lstinline{#1}}}
+
+%
+% Non-exported Java as listings
+%
+\lstnewenvironment{java*}[2][]
+{ \lstset{language=java,
+          basicstyle=\classsize\sffamily,
+          captionpos={b},
+          frame=B,
+          framesep=2ex,
+          rulesep=2pt,#1}}
+{}
+
+%
+% Non-exported Scala as listings
+%
+\lstnewenvironment{scala*}[2][]
+{ \lstset{language=scala,
+          basicstyle=\classsize\sffamily,
+          captionpos={b},
+          frame=B,
+          framesep=2ex,
+          rulesep=2pt,#1}}
+{}
+
+%
+% Non-exported XML as listings
+%
+\lstnewenvironment{xml*}[2][]
+{ \lstset{language=xml,
+          basicstyle=\classsize\sffamily,
+          captionpos={b},
+          frame=B,
+          framesep=2ex,
+          rulesep=2pt,#1}}
+{}
+
+
+\def\Java%
+{\bgroup\let\verbatim@@size=\Javasize  \@verbatim \frenchspacing\@vobeyspaces\verbatim@start}
+\def\endJava{\endjava}
+
+\def\smalljava%
+{\bgroup\let\verbatim@@size=\smalljavasize \@verbatim \frenchspacing\@vobeyspaces\verbatim@start}
+\def\endsmalljava{\endjava}
+
+\ifx \smaller\undefined \def\smaller{\normalsize} \fi
+\ifx \xmlsize\undefined \def\classsize{\smaller} \fi
+\ifx \classsize\undefined \def\classsize{\smaller} \fi
+\ifx \javasize\undefined \def\javasize{\smaller} \fi
+\ifx \Javasize\undefined \def\Javasize{} \fi
+\ifx \smalljavasize\undefined \def\smalljavasize{\normalsize} \fi
+
+\def\textjava#1{\texttt{#1}}
+%
+%
+%
+%
+\def\JavaSize#1{\let\javasize=#1\let\classsize=#1}
+\def\Small{\JavaSize{\small}}
+\def\Footnotesize{\JavaSize{\footnotesize}}%
+% For comments in the listings
+%
+\def\Represents#1;{\textbf{represents:} $\relax #1$}
+\def\Returns#1;{\textbf{returns:} $\relax #1$}
+\def\Pre#1;{\textbf{pre:} $\relax #1$}
+\def\Post#1;{\textbf{post:} $\relax #1$}
+\def\State#1;{\textbf{state:} $\relax #1$}
+%
+%
+%
+\def\seq#1{\left<#1\right>}
+\def\cat{\mathbin{+\!\!+}}
+%
+% Doesn't do anything, but doc blocks are transformed into java/scala block comments. 
+%
+\newenvironment{doc}[2][]{\begin{smaller}}{\end{smaller}}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

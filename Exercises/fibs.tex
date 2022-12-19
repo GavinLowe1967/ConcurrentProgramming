@@ -1,0 +1,95 @@
+\begin{question}
+\begin{enumerate}
+\item
+Write a definition for a process
+\begin{scala}
+  def sumStreams(in1: ?[Int], in2: ?[Int], out: ![Int]) = proc{ ... }
+\end{scala}
+that repeatedly inputs a value from each of its input ports (in either order),
+and outputs the sum on the output port.  (Functional programmers might like to
+think of this process as implementing \SCALA{zipwith (+)}.)
+
+\item
+The Fibonacci numbers \SCALA{fibs} (0, 1, 1, 2, 3, 5, \ldots) can be defined
+using the equation
+\begin{scala}
+  fibs = 0 : sumStreams( fibs, 1:fibs )
+\end{scala}
+(i.e.\ the stream that starts with 0, and continues with the result of summing
+the stream \SCALA{fibs} and the result of pre-pending \SCALA{fibs} with~1). 
+
+Design and implement a circuit with signature
+\begin{scala}
+  def Fibber(out: ![Int]) = ...
+\end{scala}
+that outputs the Fibonacci numbers on \SCALA{out}, making use of the above
+equation.  Draw a picture to explain your design.  Produce a simple test rig
+to test your implementation.
+\end{enumerate}
+\end{question}
+
+%%%%%
+
+\begin{answer}
+We'll produce a system as illustrated below.
+\begin{verbatim}
+                      fwd
+    |---->prefix 0-----------|  
+    |                        |
+    |                        |
+    |                back1   V    out
+sum |      prefix 1<-------tee3---->
+    |         |              |
+    |    back2|              |back3
+    |         |              |
+    |         V              |
+    ----sumStreams<-----------                           
+\end{verbatim}
+\begin{scala}
+import ox.CSO._
+
+object Fibs{
+
+  // Three-way T component
+  def tee3[T](in: ?[T], out1: ![T], out2: ![T], out3: ![T]) = proc{
+    repeat{
+      val v = in?; 
+      (proc{ out1!v } || proc{ out2!v } || proc{ out3!v })();
+    }
+    in.close; out1.close; out2.close; out3.close;
+  } 
+
+  // Input values from each input channel, and output their sum
+  def sumStreams(in1: ?[Int], in2: ?[Int], out: ![Int]) = proc{
+    var x=0; var y=0;
+    repeat{
+      (proc{ x = in1? } || proc{ y = in2? })();
+      out!(x+y); 
+    }
+    in1.close; in2.close; out.close;
+  }
+
+  // From lectures
+  def prefix[T](first:T, in: ?[T], out: ![T]) = proc{
+    out!first;
+    repeat{ out!(in?); };
+    in.close; out.close;
+  }
+
+  val sum, fwd, back1, back2, back3 = OneOne[Int];
+
+  def Fibber(out: ![Int]) = (
+    prefix(0, sum, fwd) || tee3(fwd, out, back1, back3) ||
+    prefix(1, back1, back2) || sumStreams(back2, back3, sum)
+  );
+
+  // Test rig
+  def TestRig = {
+    val out = OneOne[Int];
+    Fibber(out) || ox.cso.Components.console(out);
+  }
+
+  def main(args : Array[String]) = TestRig()
+}
+\end{scala}
+\end{answer}

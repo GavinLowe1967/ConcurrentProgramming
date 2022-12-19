@@ -1,0 +1,55 @@
+\begin{question}
+Suppose you are designing an interactive networked application.  You decide to
+have one process handling actions by the local user, and another process
+handling messages that are received over the network.  What could go wrong
+with this design?  Describe how you could avoid these problems.
+\end{question}
+
+\begin{answer}
+There's a great danger of race conditions.  For example, suppose the
+local-action-handling process executes the code \SCALA{x = x+1}, and the
+network-message-handling process executes the code \SCALA{x = x-1}; as we saw
+in lectures, the read and write actions of these assignments could be
+interleaved in many ways, giving unintended results.
+
+One way to deal with this problem would be to code the rest of the program as
+a third process.  When either of the other two processes receives a user
+action or a network message, it sends a message to the main process.  
+
+\begin{verbatim}
+ ------------------------  laChan    -----------
+ | local action handler | ---------> |         |
+ ------------------------            | main    |
+                                     | process |
+ ------------------------  nmChan    |         |
+ | network msg handler  | ---------> |         |
+ ------------------------            -----------
+\end{verbatim}
+
+The main process is a sequential process, which repeatedly receives a message
+from one of the other threads, and acts appropriately.  Something like:
+%
+\begin{scala}
+serve( laChan ==> { ... }
+     | nmChan ==> { ... }
+)
+\end{scala}
+%
+Hence the effects of the local actions or network messages are treated
+atomically.
+
+Alternatively ---and slightly harder--- we could use a Model-View-Controller
+architecture with two controllers, namely the local-action-handling and
+network-message-handling processes.  The Model and View are now a separate
+process, that presents various atomic operations to the controllers.  This
+process again is structured as a sequential \SCALA{serve} loop, as above.
+Care needs to be taken that the atomic operations can be interleaved
+arbitrarily. (In fact, the Model and View could sensibly be two independent
+processes.)
+\end{answer}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Alternatively, talk about programs branchin off threads to handle different
+GUI events.

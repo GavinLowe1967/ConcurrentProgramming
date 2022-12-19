@@ -1,0 +1,61 @@
+\begin{question}
+\Programming\ 
+%
+Recall the producer-consumer buffer problem from
+Question~\ref{Q:consumerM}.
+% Consider the following producer-consumer problem.  Several producers each
+% produce one piece of (integer) data at a time, which they place into a buffer
+% using a method \SCALA{put(item: Int)}.  These are accumulated into an array of
+% size $n$.  A consumer can receive that array, once it is full, using the
+% method \SCALA{get : Array[Int]}.  
+Implement the buffer using semaphores. 
+% The consumer should be blocked until the array is full, and the
+% producers should be blocked once the array is full.
+Test your code.
+\end{question}
+
+%%%%%
+
+\begin{answer}
+The code below uses the technique of passing the baton.  The producer needs to
+pass the baton to either another producer or the consumer, depending on
+whether the buffer is now full.
+%
+\begin{scala}
+class ProducerConsumerSemaphore(n: Int)  extends ProducerConsumer{
+  require(n >= 1)
+
+  /** Array to hold the data. */
+  private var a = new Array[Int](n)
+
+  /** Number of items added to a so far. */
+  private var count = 0
+
+  /** Semaphore to signal to a producer that the buffer is not full. */
+  private val nonFull = MutexSemaphore()
+
+  /** Semaphore to signal to a consumer that the buffer is full. */
+  private val full = SignallingSemaphore()
+
+  /** Add x to the buffer, waiting until it is not full. */
+  def put(x: Int) = {
+    nonFull.down
+    assert(count < n)
+    a(count) = x; count += 1
+    if(count == n) full.up else nonFull.up // pass the baton appropriately
+  }
+
+  /** Get the contents of the buffer, once it is full. */
+  def get: Array[Int] = {
+    full.down
+    assert(count == n)
+    val result = a
+    a = new Array[Int](n); count = 0
+    nonFull.up // pass baton to a producer
+    result
+  }
+}
+\end{scala}
+
+Testing can be done in the same way as for the similar question using monitors. 
+\end{answer}

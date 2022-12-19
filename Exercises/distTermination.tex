@@ -1,0 +1,103 @@
+\begin{question}
+Consider a system constructed from $N$ similar processes, with identities
+$0, \ldots, N-1$.  Each process can send messages to any other process, on
+synchronous channels.
+
+Each process is either \emph{active} or \emph{passive}.  When a process is
+passive, it simply waits to receive a message, at which point it becomes
+active.  When a process is active, it can send messages to any other
+processes, but may eventually become passive.
+
+The aim of this question is to consider a technique for determining whether
+all the processes are passive, in which case the system can terminate.
+
+\begin{enumerate}
+\item Consider the following scheme.  Process~0, when it is passive, sends a
+token to process~1, containing a boolean value, initially $true$.  Each
+process~$k$, when it receives a token of this form, sends a similar token to
+process~$(k+1) \bmod N$, so the token circulates, as if the processes are
+arranged in a ring; note, though that other messages don't need to follow the
+ring.  Process~$k$ sets the value in the token to be $false$ if it is active,
+or passes on the value it receives if it is passive; in each case, the process
+retains its previous status (active or passive).  When the token returns to
+process~0, if its value is $true$, it assumes that all processes are passive,
+so sends a message to all processes telling them to terminate.
+
+Explain why this scheme does \emph{not} achieve the desired goal.
+
+%%%%%
+
+\item
+Describe how to adapt this scheme so that it does achieve the desired goal.
+Explain why your scheme works.  Make clear what (safety and liveness)
+properties your scheme achieves.
+
+%%%%%
+
+\item
+Now suppose the normal messages do follow the ring topology.  Describe how to
+adapt the scheme so that it achieves the desired goal. 
+
+% \item
+% Does it make a difference if the channels are asynchronous (i.e.~buffered)? 
+\end{enumerate}
+\end{question}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{answer}
+\begin{enumerate}
+\item
+Consider a ring of four processes, with process~3 initially active.  Suppose
+the token circulates to process~2, so the boolean is still $true$.  Then
+suppose process~3 sends a message to process~1 and becomes passive, but
+process~1 remains active.  Then the token is passed on to process~3, then
+back to process~0, with the boolean still $true$.  Hence process~0 assumes all
+processes are passive, even though process~1 is active.
+
+%%%%%
+
+\item Arrange for the token to go round the ring \emph{twice} (with some field
+indicating whether it is on its first or second circuit).  On the second
+circuit, each process sets the boolean to be $false$ if it has been active at
+any time since it saw the token the first time.
+
+Consider the time~$t$ at which the token first returns to process~0.  If
+any process is active at time~$t$, then it will subsequently set the boolean
+to $false$.  Hence, if the value ends up $true$, then all processes were
+passive at time~$t$, and so all remain passive.  (This is a safety property:
+the system terminates only if it is correct to do so.) 
+
+It is possible for all the processes to become passive while the token is
+circulating, but after at least one has seen it for the first time, in which
+case the scheme does not lead to overall termination.  However, if all are
+passive when the token starts circulating for the first time, then termination
+will result.  (This is a liveness property: the system does terminate,
+under the stated conditions.)
+
+
+%%%%%
+
+\item Arrange for the termination messages and the data messages to go round
+the ring in the same direction.  Sending the token only once round the ring is
+now sufficient: process~0 can choose to terminate provided the boolean comes
+back as $true$ and it has been continually passive since initiating the token.
+The following property is invariant: if process~0 remains passive, and the
+boolean in the token is still $true$, then all processes between~0 and the
+current token-holder are passive.
+
+\emph{Alternatively} send the termination messages round the ring in the
+\emph{opposite} direction, i.e.~node~$i$ sends the termination token to
+node~$(i-1) \bmod N$.   The following property is invariant: if process~$i$
+sends the token with value $true$, then all processes in the range $[i ..
+N-1) \union \set{0}$ are passive.
+
+
+% \item
+% If the channels are asynchronous, then each passive process must check that
+% its input channels are empty before passing the token.  Otherwise, such a
+% process could subsequently become active as a result of receiving a message
+% that was in the channel.
+
+\end{enumerate}
+\end{answer}

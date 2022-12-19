@@ -1,0 +1,81 @@
+% Loosely based on A7.9
+\begin{question}
+\Programming\ Consider a setting with two kinds of processes, which we will
+call Male and Female; suppose we have $N$ Males and $N$ Females.  The aim is
+to pair the processes off for some purpose, so each Male is paired with a
+Female, and vice versa.  Each process should end up in possession of its
+partner's identity.  Design and implement a protocol to achieve this.  The
+protocol should be such that the pairings are decided nondeterministically (so
+it's not acceptable for the protocol to simply pair each Male off with the
+Female with the same index, for example).  The protocol should not use any
+process other than the Males and Females.  Note: you need to be careful to
+follow the restrictions on the use of \SCALA{alt}s.
+\end{question}
+
+%%%%%
+
+\begin{answer}
+We will arrange (arbitrarily) for the Female to send a ``proposition'' to a
+Male, and she is willing for any Male to receive this; each Male will accept a
+single proposition, and is willing to accept it from any Female.  (I'm not
+sure which gender this is less polite towards!)   
+
+It is worth considering the type of the proposition channel.  One approach
+that doesn't work is to have $N^2$ \SCALA{OneOne} channels, so that Female~$i$
+propositions Male~$j$ on channel \SCALA{prop(i)(j)}; this would mean that
+Female~$i$ would use an \SCALA{alt} over the output ports of the
+\SCALA{prop(i)(j)}, for $j = 0, \ldots, N-1$; and that Male~$j$ uses an
+\SCALA{alt} over the input ports of the \SCALA{prop(i)(j)}, for $i = 0,
+\ldots, N-1$; but that breaks one of the restrictions on the use of
+\SCALA{alt}.
+
+Another approach that doesn't work is to give each Female a \SCALA{OneMany}
+proposition channel, on which it can send a proposition to an arbitrary Male.
+However, then each Male would use an \SCALA{alt} over the input ports of those
+channels, breaking the other restriction on the use of\SCALA{alt}.
+
+The approach we do take is to use a single \SCALA{ManyMany}
+channel~\SCALA{prop}, on which an arbitrary Female may proposition an
+arbitrary Male.  The Female can send her identity within the proposition.  The
+Male can then respond, sending his own identity; we give each Female a
+\SCALA{ManyOne} channel for this.
+%
+\begin{scala}
+import ox.CSO._
+
+object MaleFemale{
+  val N = 5; // number of males and females
+
+  def Female(me: Int, prop: ![Int], resp: ?[Int]) 
+  = proc("Female "+me){
+    prop!me;
+    val him = resp?;
+    report!("Female "+me+" coupled with male "+him);
+  }
+
+  def Male(me: Int, prop: ?[Int], resp: Seq[![Int]]) 
+  = proc("Male "+me){
+    val her = prop?;
+    resp(her)!me;
+    report!("Male "+me+" coupled with female "+her);
+  }
+
+  val prop = ManyMany[Int];
+  val resps = ManyOne[Int](N);
+  val report = ManyOne[String]
+
+  val System = (
+    || ( for(i <- 0 until N) 
+           yield Female(i, prop, resps(i)) )
+    || 
+    || ( for (i <- 0 until N) 
+           yield Male(i, prop, resps) )
+    || ox.cso.Components.console(report) 
+  );
+
+  def main(args : Array[String]) = System();
+}
+\end{scala}
+\end{answer}
+
+    

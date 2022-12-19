@@ -1,0 +1,68 @@
+\begin{question}
+\Programming\ Implement a bounded buffer, of size~$n$, using two counting
+semaphores: one semaphore should prevent data from being added to the buffer
+when it is full; the other should prevent data from being removed from the
+buffer when it is empty.
+
+Test your implementation using the linearizability framework. 
+\end{question}
+
+%%%%%
+
+\begin{answer}
+\begin{scala}
+/** A queue implemented using a counting semaphore. */
+class BoundedCountingSemaphorePartialQueue[T](n: Int) extends PartialQueue[T]{
+  /** The queue itself. */
+  private val queue = new scala.collection.mutable.Queue[T]
+
+  /** Semaphore for enqueuing.  The state of the semaphore equals the number of
+    * free spaces. */
+  private val spaces = CountingSemaphore(n)
+
+  /** Semaphore for dequeueing.  The state of the semaphore equals queue.length. */
+  private val size = CountingSemaphore(0)
+
+  /** Semaphore to provide mutual exclusion. */
+  private val mutex = MutexSemaphore()
+
+  def enqueue(v: T) = {
+    spaces.down; mutex.down
+    queue.enqueue(v)
+    size.up; mutex.up
+  }
+
+  def dequeue: T = {
+    size.down; mutex.down
+    val result = queue.dequeue
+    mutex.up; spaces.up
+    result
+  }
+}
+\end{scala}
+%
+Note that the order in which each thread acquires the two semaphores is
+important.  If the |down|s where performed in the opposite order, the system
+could become deadlocked, e.g.~if the queue is empty and a |dequeue| acquires
+the |mutex| first.  Above, assuming no thread is permanently descheduled, a
+thread will eventually proceed. 
+
+This can be tested using the linearizability framework.  The only non-trivial
+changes from the version in lectures is that both corresponding sequential
+operations have preconditions.
+\begin{scala}
+  type SeqQueue = scala.collection.immutable.Queue[Int]
+  def seqEnqueue(x: Int)(q: SeqQueue) : (Unit, SeqQueue) = {
+    require(q.length < n); ((), q.enqueue(x))
+  }
+  def seqDequeue(q: SeqQueue) : (Int, SeqQueue) = {
+    require(q.nonEmpty); q.dequeue
+  }
+\end{scala}
+%
+To avoid deadlocks, it's best to run this in a setting where half the workers
+perform enqueues and half perform dequeues.  In order to obtain good coverage
+of the tests, in particular to cover the case of the queue becoming full, some
+tests should use a small value for $n$ (e.g.~by choosing $n$ as a random
+number between 1 and 10).
+\end{answer}

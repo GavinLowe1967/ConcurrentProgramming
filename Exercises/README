@@ -1,0 +1,100 @@
+For 2023
+
+Emphasise difference between Conditions and Semaphores: former are stateless.
+With a Condition, a signal can be lost if no thread is doing an await.  Normal
+to set a state variable to deal with this case.
+
+Men & women exercises on sheet 4: stress that it's necessary to keep the
+different pairings disjoint.
+
+Sheet 4, recursive tree sum, move earlier.
+
+reopen, isClosed
+
+Emphasis difference between notify and signal -- don't use the wrong one. 
+
+Move material on fine-grained locking later.
+
+Practocal 2, timeout part: now use sendBefore, so much simpler.  Also remind
+students that delay in nanos, so suggest val waitTime = 400_000_000L
+
+Consider trapezium with buffered channels.  Rerun experiments. 
+
+Use updated linearizability tester.
+
+Explain why a partial concurrent queue needs to use synchronous channels. 
+
+Consider non-even shares in various examples. 
+
+Barrier syncs: O(log n) time per sync (+ O(n) creation).
+
+-------------------------------------------------------
+
+For 2022
+
+Consider trapezium with buffered channels.  I can't get this to work!
+
+Profile trapezium cases where things are slow. -- done
+
+Use updated linearizability tester.
+
+Consider non-even shares in various examples. 
+
+Maybe trim last example in dataParallel that avoids copying. -- done
+
+On web:
+
+- Immutable Stack for sheet 3
+- New testing harness for smoothing (sheet 3) (doesn't assume square)
+- ~/Teaching/ConcProg/Scala/SemExamples/NutexQueue.scala (semaphores chapter)
+-----
+
+Sheet 1: include question considering sequential implementation of queue (or
+stack) based on a linked list.  Spot things that can go wrong when used
+concurrently. -- done
+
+Sheet 1, Q6: the correct number of ordered messages is about 5n.  Maybe ask
+for O(_) answer.  Also draw picture in question.  I think n-1 nodes is enough.
+Add follow-up question: would a pipeline of n nodes sort more than n values
+(email with Alfono Bueno Orovio, 3/2/2021)? -- done
+
+Sheet 2, ring fold question.  Give signature of expected algorithm.  Maybe
+also change the interacting peers examples to be consistent. -- done first part.
+
+Sheet 3, Q1: immutable.Stack now no longer in the API. -- done
+
+Sheet 3: in barrier sync questions on arrays, prefer to use two arrays and
+avoid a barrier sync.  Also update in lecture notes, slide 3. -- done
+
+Sheet 3 (or earlier): reminder about tsLog = false -- done
+
+Sheet 3, gridMax: prefer solution that considers the two dimensions
+separately.  Then compare with doing both dimensions at the same time. -- done
+
+Chapter 12, first-come first-served resource server, no need for enter to
+check !queue.isEmpty, because there's an invariant if the mutex is up and busy
+= false then the queue is empty. -- done
+
+--------------------------
+
+Provide testing harnesses for:
+
+- Sheet 2, Q4 (adaptive quadrature)
+/users/gavinl/Teaching/CP/Scala/Trapezium/AdaptiveTest.scala
+
+- Sheet 3, Q2 (barrier sync) 
+/users/gavinl/Teaching/CP/Scala/Barrier/Barriertest.scala (adapt from lectures)
+
+- Sheet 3, Q3 (prefix sums)
+(Same as lectures.)
+
+Sheet 3, Q4 (grid max)
+/users/gavinl/Teaching/CP/Scala/Exercises/GridMaxTest.scala
+
+- Sheet 3, Q5 (image smoothing)
+/users/gavinl/Teaching/CP/Scala/Exercises/SmoothSharedTest.scala
+
+- Sheet 4, Q3 (binary tree sum)
+/users/gavinl/Teaching/CP/Scala/Exercises/TreeSumTest.scala
+
+Add question to discuss changing the BFS to shared variables.  Done.

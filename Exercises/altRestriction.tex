@@ -1,0 +1,47 @@
+\begin{nontutequestion}
+Recall the following restriction on the use of \SCALA{alt}:
+%
+\begin{quote}
+If the output port of a channel participates in an \SCALA{alt} then its input
+end must not simultaneously participate in an(other) \SCALA{alt}.
+\end{quote}
+%
+Suggest a reason for this restriction.
+\end{nontutequestion}
+
+%%%%%
+
+\begin{nontuteanswer}
+The restriction makes implementation of \SCALA{alt} much easier.  Consider a
+program such as \SCALA{P || Q} where:
+%
+\begin{scala}
+def P = proc{ alt( c -!-> ... | a -?-> ...) }
+def Q = proc{ alt( c -?-> ... | b -?-> ...) }
+\end{scala}
+%
+The two \SCALA{alt}s are executed by different threads.  There is a danger of
+the \SCALA{alt} in \SCALA{P} selecting channel~\SCALA{c} at the same time that
+the \SCALA{alt} in \SCALA{Q} selects channel~\SCALA{b}, for example; the two
+threads would then evolve in ways inconsistent with the intended semantics.    
+
+Solving these problems would require some non-trivial synchronisation between
+the two threads.
+
+This problem potentially becomes harder when we have more than two processes.
+
+Very similar examples can be used to show why the input port of a OneMany
+channel may not simultaneously participate in more than one \SCALA{alt}. 
+\end{nontuteanswer}
+
+%% Consider a ring of processes:
+%% %
+%% \begin{scala}
+%% || ( for(i <- 0 until N) yield P(i) )
+%% \end{scala}
+%% %
+%% where
+%% %
+%% \begin{scala}
+%% def P(me) = proc{ alt( c((me+1)\%N) -!-> ... | c(me) -?-> ...) }
+%% \end{scala}

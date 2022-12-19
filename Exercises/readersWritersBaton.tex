@@ -1,0 +1,85 @@
+\begin{question}
+\Programming\ Implement a solution to the readers and writers problem using
+semaphores and the technique of passing the baton.  Think carefully about whom
+the baton should be passed to in different scenarios in each of the following
+scenarios: when a reader enters; when a writer enters; when a reader leaves;
+when a writer leaves.
+\end{question}
+
+%%%%%
+
+\begin{answer}
+\begin{itemize}
+\item When a reader enters we pass the baton to another waiting reader if
+  there is one; otherwise we lift the mutex to allow other processes to run.
+
+\item When a writer enters we just lift the mutex (no other process can be
+  allowed in).
+
+\item When a reader leaves we pass the baton to a writer if we can (i.e.~if
+  there are no readers in the database and there is a writer waiting) to
+  provide a form of fairness; otherwise we just lift the mutex.
+
+\item When a writer leaves we pass the baton to a reader if there is one
+  waiting (to provide a form a fairness); otherwise we pass to the baton to a
+  writer if there is one waiting; otherwise we just lift the mutex.
+\end{itemize}
+
+\begin{scala}
+object RWController{
+  private var readers = 0; private var writers = 0;
+  // Number of readers, writers currently using database
+  // Invariant: writers = 1 && readers = 0 || writers = 0
+
+  private var readersWaiting, writersWaiting = 0;
+  // Number of readers, writers waiting
+
+  private val readerWait, writerWait = new Semaphore;
+  readerWait.down; writerWait.down;
+  // Semaphores for readers, writers to wait on
+
+  private val mutex = new Semaphore; // semaphore to protect variables
+
+  private def Report = { 
+    println("readers="+readers+"; readersWaiting = "+readersWaiting); 
+  }
+    
+  def ReaderEnter = {
+    mutex.down; println("Reader trying");
+    if(writers>0){ 
+      readersWaiting += 1; mutex.up; 
+      readerWait.down; // wait to be woken
+      readersWaiting -= 1; readers+=1; Report; 
+      if (readersWaiting>0) readerWait.up; // wake up next reader
+      else mutex.up
+    }
+    else{ readers+=1; Report; mutex.up; }
+  }
+
+  def WriterEnter = { 
+    mutex.down; println("Writer trying");
+    if(readers>0 || writers>0){ 
+      writersWaiting += 1; mutex.up; 
+      writerWait.down; // wait to be woken
+      writersWaiting -= 1; 
+    }
+    writers = 1; println("Writer entering"); mutex.up; 
+  }
+
+  def ReaderLeave = {
+    mutex.down; 
+    readers -= 1; Report; 
+    if(readers==0 && writersWaiting>0) writerWait.up; // wake up writer
+    else mutex.up; 
+  }
+      
+  def WriterLeave = { 
+    mutex.down;
+    writers = 0; println("Writer leaving"); 
+    if (readersWaiting>0) readerWait.up; // give priority to waking up reader
+    else if (writersWaiting>0) writerWait.up; // wake up writer
+    else mutex.up;
+  }
+}
+\end{scala}
+\end{answer}

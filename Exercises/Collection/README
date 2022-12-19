@@ -1,0 +1,10 @@
+In Bridge with monitor, need northClear.await(fromSouth == 0) since
+the property may no longer be true when the thread gets the lock (see
+mail from Benedict Bunting.
+
+In graph search, use undirected graph.  Can avoid final loop
+(absorbing extra messages) by remembering which nodes have sent us a
+message we rejected, and not subsequently sending them a message.
+Consider loop of messages A -> B -> C -> A.  With neither, A would
+send subsequent message to C which would be blocked.  With this
+change, A won't send to C.

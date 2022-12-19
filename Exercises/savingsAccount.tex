@@ -1,0 +1,114 @@
+\begin{question}
+\Programming\ (Based on Andrews, Exercise 7.8.)  
+%
+A savings account is shared by several people.  Each person may deposit or
+withdraw funds from the account, but the balance may never become negative.  
+
+Develop a server to model this problem.  Withdrawal operations must be queued
+until there are sufficient funds available.  (You might like to use a
+\url{scala.collection.mutable.Queue} to hold such queued withdrawals.)
+\end{question}
+
+%%%%%
+
+\begin{answer}
+\begin{scala}
+import ox.CSO._
+
+object SavingsAccount{
+  type ClientId = Int;
+ 
+  abstract class Request;
+  case class Deposit(amount:Int, c:ClientId) extends Request; 
+  case class WithDrawal(amount:Int, c:ClientId) extends Request;
+
+  abstract class Response;
+  case class Ok() extends Response; 
+ 
+  // The server
+  def Server(req: ?[Request], resp: Seq[![Response]]) = proc{
+    var balance = 0; // current balance
+    // queue of withdrawal requests not yet serviced
+    val queue = new scala.collection.mutable.Queue[Request] 
+
+    repeat{
+      val request = req?;
+      request match{
+	case Deposit(amount, c) => {
+	  balance += amount;
+	  resp(c) ! new Ok();
+	  println("Deposit of "+amount+"; balance now "+balance);
+	  // See if any queued withdrawals can be serviced
+	  var done = false;
+	  while(! queue.isEmpty && !done){
+	    queue.front match{
+	      case WithDrawal(amount1, c1) => {
+		if(amount1<=balance){
+		  queue.dequeue; balance -= amount1; 
+                  resp(c1) ! new Ok();
+		  println("Withdrawal of "+amount1+ 
+                    " dequeued; balance now "+balance);
+		} 
+		else done = true;
+	      }
+	    }
+	  }
+	}
+	case WithDrawal(amount, c) => {
+	  if(amount<=balance){
+	    balance -= amount; resp(c) ! new Ok();
+	    println("Withdrawal of "+amount+
+                    "; balance now "+balance);
+	  }
+	  else{
+	    queue += request;
+	    println("Withdrawal of "+amount+" queued");
+	  }
+	}
+      }
+    }
+  }
+
+  val random = new scala.util.Random;
+
+  def Client(me: ClientId, req: ![Request], resp: ?[Response]) 
+  = proc{
+    repeat{
+      if(random.nextInt(2)==0){	// Make deposit
+	req ! new Deposit(random.nextInt(10), me);
+	resp?; ()
+      }
+      else{ // Make withdrawal
+	req ! new WithDrawal(random.nextInt(10), me);
+	resp?; ()
+      }
+      sleep(random.nextInt(2000))
+    }
+  }
+
+  val numClients = 5;
+
+  val req = ManyOne[Request];
+  val resp = OneOne[Response](numClients);
+	  
+  def Clients =
+    || (for (c <- 0 until numClients) yield
+          Client(c, req, resp(c)) )
+
+  def System = Clients || Server(req, resp)
+
+  def main(args:Array[String]) = System();
+}
+\end{scala}
+
+There are a number of possible variations.  The above implementation services
+a new withdrawal request, even if there are others queued; alternatively it
+could be added to the back of the queue.  The above implementation only tries
+to service queued withdrawal requests in queue order, until one is found that
+is for too much; there might be withdrawal requests for smaller amounts
+further down the queue that could be serviced immediately.
+
+The system can deadlock if all clients try to make withdrawals for which
+insufficient funds are available.  This seems unavoidable.
+\end{answer}
+	  

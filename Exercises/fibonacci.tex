@@ -1,0 +1,65 @@
+\begin{question}
+\Programming\ 
+Recall the Fibonacci numbers, which can be defined by 
+%
+\begin{scala}
+  def fib(n:Int) : Int = if(n<=1) n else fib(n-1)+fib(n-2)
+\end{scala}
+%
+Implement this using recursive parallelism.  Consider versions with no limit
+on the degree of recursion, and with some set limit.  Carry out some informal
+timing tests on the two versions and on the sequential version above.
+\end{question}
+
+%%%%%
+
+\begin{answer}
+I'll just give the version with a limit on parallelism (omit the parameter
+\SCALA{maxProcs} to get the version with no limit).
+%
+\begin{scala}
+import ox.CSO._
+
+object Fibonacci2{
+
+  // Standard recursive definition
+  def fib(n:Int) : Int = if(n<=1) n else fib(n-1)+fib(n-2)
+
+  // Process to calculate fib n and send it on the out channel,
+  // using at most maxProcs processes
+  def Fib(n:Int, out: ![Int], maxProcs:Int) : PROC = proc{
+    if(n<=1) out!n;
+    else if(maxProcs<=1) out! fib(n);
+    else{
+      val res1, res2 = OneOne[Int];
+      val k = maxProcs/2;
+      ( proc{ out!((res1?)+(res2?)); out.close} || 
+        Fib(n-1, res1, k) || Fib(n-2, res2, maxProcs-k)
+      )()
+    }
+  }
+
+  def System(n:Int) = {
+    val out = OneOne[Int];
+    Fib(n, out, 8) || ox.cso.Components.console(out);
+  }
+
+  def main(args:Array[String]) = {
+    val n = Integer.valueOf(args(0)).intValue();
+    val t0 = java.lang.System.currentTimeMillis()
+    println(fib(n));
+    println("Time taken: "+(java.lang.System.currentTimeMillis()-t0));
+    val t1 = java.lang.System.currentTimeMillis()
+    System(n)();
+    println("Time taken: "+(java.lang.System.currentTimeMillis()-t1));
+  }
+}
+\end{scala}
+
+My experimental results are as follows, on an 8 processor machine.  The
+version with no limit on parallelism struggles, taking about 10 seconds for $n
+= 20$, compared with less than 20ms for the other versions.  For $n = 45$, the
+parallel version with limited recursion is about 4 times faster than the
+sequential version.
+\end{answer}
+

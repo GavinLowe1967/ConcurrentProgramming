@@ -1,0 +1,111 @@
+\begin{question}
+\Programming\ Recall the following synchronisation problem from the previous
+problem sheet.  Each process has an integer-valued identity.  A particular
+resource should be accessed according to the following constraint: a new
+process can start using the resource only if the sum of the identities of
+those processes currently using it is divisible by~3.  Implement a class to
+enforce this, with operations \SCALA{enter(id: Int)} and \SCALA{exit(id:
+  Int)}.  Your class should use semaphores. 
+
+Test your code.
+\end{question}
+
+%%%%%
+
+\begin{answer}
+My code is below.  The procedure \SCALA{signal} implements the baton-passing,
+passing the baton either to a waiting process, or lifting the mutual
+exclusion. 
+\begin{scala}
+class Mod3S extends Mod3{
+  /** sum of identites of processes currently in critical region. */
+  private var current = 0
+
+  /** Number of processes waiting. */
+  private var waiting = 0
+
+  /** Semaphore for blocked processes to wait on.  
+    * A signal implies current%3 = 0. */
+  private val entry = SignallingSemaphore()
+
+  /** Semaphore for mutual exclusion. */
+  private val mutex = MutexSemaphore()
+    
+  /** Pass the baton, either signalling for another process to enter, or lifting
+    * the mutex. */
+  private def signal = {
+    if(current%3 == 0 && waiting > 0) entry.up
+    else mutex.up
+  }
+
+  def enter(id: Int) = {
+    mutex.down
+    if(current%3 != 0){
+      waiting += 1; mutex.up; entry.down // wait for a signal
+      assert(current%3 == 0); waiting -= 1
+    }
+    current += id
+    signal
+  }
+
+  def exit(id: Int) = {
+    mutex.down
+    current -= id
+    signal
+  }
+}
+\end{scala}
+
+Here's another solution.
+\begin{scala}
+class Mod3S2 extends Mod3{
+  /** sum of identites of processes currently in critical region. */
+  private var current = 0
+
+  /** Semaphore to protect shared variable. */
+  private val mutex = MutexSemaphore()
+
+  /** Semaphore on which threads may have to wait. */
+  private val canEnter = MutexSemaphore()
+  /* Invariant: if canEnter is up then current%3 = 0.  A thread that does
+   * canEnter.down will be the next to enter. */
+
+  def enter(id: Int) = {
+    canEnter.down 
+    assert(current%3 == 0)
+    // at most one thread can be waiting here (+)
+    mutex.down
+    current += id
+    if(current%3 == 0) canEnter.up
+    mutex.up
+  }
+
+  def exit(id: Int) = {
+    mutex.down
+    current -= id // does this maintain the invariant? (*)
+    if(current%3 == 0 && id%3 != 0) canEnter.up
+    mutex.up
+  }
+}
+\end{scala}
+%
+This has an intended invariant:
+\begin{quote}
+ if |canEnter| is up then $\sm{current}\%3 = 0$.
+\end{quote}
+Most steps obviously maintain this.  To see that |(*)| maintains it, it is
+necessary to observe that the critical section contains at most one thread
+with identity |id| such that $\sm{id} \% 3 \ne 0$ (once one such is in the
+critical section, another can't enter it).  Hence, if |canEnter| is up when a
+call to |exit(id)| begins, then $\sm{current}\%3 = 0$, so $\sm{id} \% 3 = 0$.
+Hence |(*)| maintains the invariant.
+
+It is also important that there is at most one thread waiting at |(+)|: if
+there are two, then the first to get the mutex could set $\sm{current}\%3 \ne
+0$, and then the second could enter against the rules of the question.  The
+form of the |if| statement in |exit| is necessary to enforce this: only a
+thread that makes $\sm{current}\%3 = 0$ does  |canEnter.up| to allow a
+thread to reach |(+)|.
+
+Of course, the testing code from the previous version can be reused.
+\end{answer}

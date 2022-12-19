@@ -1,0 +1,16 @@
+\begin{question}
+Recall the prefix sum example from the ``Synchronous Data Parallel
+Programming'' chapter.  Explain why the barrier synchronisation is necessary.
+\end{question}
+
+%%%%%
+
+\begin{answer}
+Without the barrier synchronisation, a summer could receive values out of
+order.  For example, \SCALA{Summer(3)} could first receive \SCALA{a(0)+a(1)}
+from \SCALA{Summer(1)}, and then receive \SCALA{a(2)} from \SCALA{Summer(2)},
+if Summer(1) happens to be faster than Summer(2).  Despite this
+\SCALA{Summer(3)} ends up with the right answer; but it will pass
+\SCALA{a(0)+a(1)+a(3)} to \SCALA{Summer(5)} in the second step (instead of
+\SCALA{a(2)+a(3)}), so \SCALA{Summer(5)} ends up with the wrong value.
+\end{answer}

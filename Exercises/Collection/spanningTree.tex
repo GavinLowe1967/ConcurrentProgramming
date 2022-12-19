@@ -1,0 +1,286 @@
+\begin{question}
+Consider a collection of nodes that are connected together in a directed
+graph.  Each node has a variable
+%
+\begin{scala}
+  neighbours: List[NodeId]
+\end{scala}
+listing its neighbours in the graph, where
+\begin{scala}
+  type NodeId = Int
+\end{scala}
+is the type of node identifiers.  
+
+If Node~\SCALA{n1} has a neighbour~\SCALA{n2}, then \SCALA{n1} can send
+\SCALA{n2} messages on the channel \SCALA{toNode(n2)}, and \SCALA{n2} can send
+messages back on \SCALA{toNode(n1)}.  However, nodes can send messages only to
+their neighbours. 
+
+The aim of this question is to produce concurrent programs, using CSO, to find
+a spanning tree of the graph.  For each part, you should give a brief
+description of your design.  You should state any assumptions you make about
+the \SCALA{toNode} channels.
+
+\begin{parts}
+\part\label{part:a}
+Write a concurrent program to find a spanning tree.  The protocol should be
+initiated by Node~0, which should become the root of the spanning tree.  Each
+node except Node~0 should end with a variable \SCALA{parent} holding the
+identity of its parent in the tree.  Node 0 should start by sending a message
+to each of its neighbours.  The first time that a node receives a message, it
+should accept the sender of the message as its parent, and should send a
+message on to all of its other neighbours.  \marks{7}
+
+\part
+Now adapt your answer to part~(\ref{part:a}) so that, in addition, each
+process ends up with a variable \SCALA{children: List[NodeId]} that holds the
+identities of its children, in some order.  Further, the spanning tree should
+be constructed by exploring the graph in a depth-first order.  \marks{12}
+
+\part
+Now describe how to adapt the program so that the spanning tree is constructed
+by exploring the graph in a \emph{breadth-first} order.  Code is not required,
+but you should give a clear explanation of how to achieve this goal.  
+\marks{6}
+\end{parts}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\answer
+
+\begin{parts}
+\part
+Node~0 sends a \SCALA{Req} request message to each of its neighbours.  The
+first time that a node receives a message, it accepts the sender of the
+message as its parent, and sends a \SCALA{Req} message on to all of its other
+neighbours.
+
+Here's a complete program, although only about the first half is required.  
+%
+\begin{scala}
+object SpanningTree0{
+
+  val N = 10 // number of nodes
+  type NodeId = Int // identities of nodes
+
+  abstract class Msg
+  case class Req(n: NodeId) extends Msg
+    // suggestion from potential parent n
+
+  val toNode = Array.fill(N)(OneOneBuf[Msg](N-1)) // channels to each node
+
+  def node(me: Int, neighbours: List[NodeId]) = proc{
+    var parent = 0
+
+    if(me != 0){ // Wait to receive notification from parent
+      toNode(me)?() match{ case Req(p) => parent = p }
+    }
+    println("Node "+me+" chooses parent "+parent)
+
+    // Send out request to potential children
+    for(n <- neighbours; if n != parent){ toNode(n)!Req(me) }
+
+    // There's no real need to consume other requests here
+  }
+
+  /** Generate neighbours randomly. */
+  val allNeighbours = new Array[List[NodeId]](N)
+  def generateNeighbours = {
+    // Generate links randomly
+    val links = new Array[Array[Boolean]](N,N)
+    for(i <- 0 until N; j <- i+1 until N){
+      if(scala.util.Random.nextDouble < 0.5){ 
+        links(i)(j) = true; links(j)(i) = true 
+      }
+    }
+    // Now build lists of neighbours
+    for(i <- 0 until N){
+      allNeighbours(i) = List[NodeId]()
+      for(j <- 0 until N) if (i != j && links(i)(j)) allNeighbours(i) ::= j
+    }
+  } 
+
+  def main(args:Array[String]) = {
+    generateNeighbours
+    for(i <- 0 until N) println("neighbours("+i+") = "+allNeighbours(i))
+    run( || (for (i <- 0 until N) yield node(i, allNeighbours(i))) )
+  }
+}
+\end{scala}
+
+%%%%%
+
+\part
+When a node first receives a \SCALA{Req} message, it sends \SCALA{Req}
+messages to each of its neighbours in turn, waiting for a response from each
+before sending to the next; it then sends a response back to its parent.  Each
+\SCALA{Req} message is responded to with a \SCALA{Resp} message, than
+indicates whether the sender of the \SCALA{Resp} has accepted the sender of
+the \SCALA{Req} as its parent.  Note that a node needs to reply to subsequent
+\SCALA{Req} messages negatively, until it has sent a \SCALA{Resp} to each of
+its neighbours. 
+
+\begin{scala}
+  abstract class Msg
+  case class Req(n: NodeId) extends Msg
+    // suggestion from potential parent n
+  case class Resp(n: NodeId, ok: Boolean) extends Msg
+    // response, either positive or negative, from node n
+
+  val toNode = Array.fill(ManyOne[Msg]) // channels to each node
+
+  def Node(me:Int, neighbours:List[NodeId]) = proc{
+    var parent = 0
+
+    if(me != 0){ // Wait to receive notification from parent
+      toNode(me)?() match{ case Req(p) => parent = p }
+    }
+    println("Node "+me+" chooses parent "+parent)
+
+    var children = List[NodeId]()
+    var reqs = if(me == 0) 0 else 1 // number of requests so far
+
+    // Send out requests to potential children, and wait for reply
+    for(n <- neighbours; if n != parent){ 
+      toNode(n)!Req(me)
+      var done = false
+      while(!done){
+        toNode(me)? match{ 
+          case Req(n1) =>  // refuse new invitations
+            reqs += 1; toNode(n1)!Resp(me, false)
+          case Resp(n1,b) => 
+            assert(n1 == n); done = true // received response
+            if(b) children ::= n  // add to list of children if positive response
+        } // end of match
+      } // end of while
+    } // end of for
+    
+    println("Node "+me+" has children "+children)
+
+    if(me != 0) toNode(parent)!Resp(me,true) // send agreement to parent
+
+    // Consume outstanding requests
+    val len = neighbours.length-children.length // # expected reqs
+    while(reqs < len){
+      toNode(me)? match{ 
+        case Req(n1) =>  // refuse new invitations
+          reqs += 1; toNode(n1)!Resp(me, false)
+      }
+    }
+  }
+\end{scala}
+%
+Most students will fail to consume outstanding \SCALA{Req} messages at the
+end, which will normally lead to deadlock [3 marks for this bit].
+
+%%%%%
+
+\part
+The protocol proceeds in rounds, with the $n$th round exploring the graph to a
+depth of~$n$.  The first time a node receives a \SCALA{Req}, it just sends
+back a response, accepting its parent.  The next time it receives a
+\SCALA{Req}, it sends a \SCALA{Req} on to all its other neighbours, to find if
+they will be its children.  In order to achieve termination, the responses
+back up the tree have to include a field indicating whether the search has
+bottomed-out.  Perhaps the easiest way to implement this is for the root node
+to detect when all branches have bottomed out, and to send a final
+``terminate'' signal down the tree.  [A better way is for a node whose
+  sub-tree has bottomed-out to terminate, and for its parent to not
+  subsequently send it messages; with this approach, nodes also need to avoid
+  sending messages to neighbours from whom they've previously received
+  invitations that they've rejected (in case those nodes have terminated).]
+
+%% Code isn't required, but here it is, anyway.
+%% %
+%% \begin{scala}
+%%   abstract class Msg;
+%%   case class Req(n:NodeId) extends Msg; 
+%%     // suggestion from potential parent n
+%%   case class Resp(n:NodeId, ok:Boolean, done:Boolean) extends Msg; 
+%%     // response from node n; ok will signify acceptance or rejection of
+%%     // invitation; done will indicate whether this sub-tree has
+%%     // bottomed-out.
+
+%%   val toNode = ManyOne[Msg](N); // channels to each node
+
+%%   def Node(me:Int, neighbours:List[NodeId]) = proc{
+%%     var children : List[NodeId] = Nil;
+%%     var done = false;
+%%     var childDone = new Array[Boolean](N); // is each child finished?
+
+%%     if(me==0){
+%%       // send initial request to children; should get back positive responses
+%%       for(n <- neighbours; if !childDone(n)){
+%%         toNode(n)!Req(me); 
+%%         toNode(me)? match{ 
+%%           case Resp(n1,b,d) => { assert(n1==n && b && !d); children ::= n; }
+%%         } // end of match
+%%       } // end of for
+%%       println("Node "+me+" has children "+children);
+
+%%       // Now continue to send out commands to explore graph one level deeper
+%%       while(!done){
+%%         done = true; // have all neighbours signalled willingness to terminate?
+%%         for(n <- neighbours; if !childDone(n)){
+%%           toNode(n)!Req(me); 
+%%           toNode(me)? match{ 
+%%             case Resp(n1,b,d) => { 
+%%               assert(n1==n && b); done &&= d; childDone(n) = d;
+%%             }
+%%             case Req(n1) => Resp(me,false,true);
+%%           } // end of match
+%%         } // end of for
+%%       } // end of while
+%%     } // end of if(me==0)
+
+%%     else {
+%%       var parent = 0;
+%%       toNode(me)? match{ case Req(p) => { parent = p; } }
+%%       toNode(parent)!Resp(me,true,false);                       
+%%       println("Node "+me+" chooses parent "+parent);
+
+%%       var firstRound = true; // is this the first round of pooling children
+%%       // repeatedly receive requests to explore graph one level deeper
+%%       while(!done){
+%%         toNode(me)? match{
+%%           case Req(from) => {
+%%             if(from==parent){
+%%               done = true;
+%%               // pass on to all neighbours
+%%               for(n <- neighbours; if n!=parent && !childDone(n)){ 
+%%                 toNode(n)!Req(me); 
+%%                 // wait for reply
+%%                 var replyRecd = false
+%%                 while(!replyRecd){
+%%                   toNode(me)? match{ 
+%%                     case Req(n1) => { // refuse new invitations
+%%                       toNode(n1)!Resp(me,false,true); 
+%%                       childDone(from) = true; // never invite this node
+%%                     }
+%%                     case Resp(n1,b,d) => { // reply received
+%%                       assert(n1==n); done &&= d; replyRecd = true; 
+%%                       if(firstRound && b){ children ::= n; assert(!d); }
+%%                       childDone(n) = d; 
+%%                     }
+%%                   } // end of match
+%%                 } // end of while(!replyRecd)
+%%               } // end of for
+%%               toNode(parent)!Resp(me, true, done);
+%%               if(firstRound){
+%%                 println("Node "+me+" has children "+children);
+%%                 firstRound = false;
+%%               }
+%%             } // end of if(from==parent)
+%%             else{
+%%               toNode(from)!Resp(me,false,true); // refuse new invitations
+%%               childDone(from) = true; // never invite this node
+%%             }
+%%           } // end of case Req(from)
+%%         } // end of match
+%%       } // end of while(!done)
+%%     } // end of else
+%%   }
+%% \end{scala}
+\end{parts}
+\end{question}

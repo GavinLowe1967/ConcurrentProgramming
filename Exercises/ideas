@@ -1,0 +1,45 @@
+class Or(init1: Boolean, init2: Boolean){
+  var b1 = init1; var b2 = init2
+  def P = proc{ b1 = !b1; b2 = !b2 }
+  def Q = proc{ println(b1 || b2) }
+  (P || Q)()
+}
+
+- Show that b1 or b2 is an invariant of Or(false, true)
+
+- show that, nevertheless, Q might print false.
+
+- Suggest a simple change to Q such that, whatever the values of init1 and
+  init2, Q correctly prints a value that is valid at some time during its
+  execution (I'm not sure if this works).
+
+
+Knapsack problem, using bag of tasks.
+
+
+Use subclassing to turn Stack into a stack where pop blocks.
+
+
+Use nats, map, console and the function double to produce a program that prints all multiples of 4.
+
+Two input max -> n input max
+
+Mergesort or quicksort
+
+QSort: number of processes as function of input size; experiment with number of processes. 
+
+Dining philosophers with one left handed / timeout.
+
+Multiplexing (as in Sec 5.3 of the CPA paper).
+
+Contrast alt with []
+
+"If the output port of a channel participates in an \SCALA{alt} then its input
+end must not simultaneously participate in an(other) \SCALA{alt}."  In the
+lectures, we said that this makes implementatio of alt considerably easier.
+Explain why.
+
+n place buffer
+
+Low-level chapter: replace slot by queue; multiple consumers, multiple
+producers.

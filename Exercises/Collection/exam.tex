@@ -1,0 +1,49 @@
+\documentclass{exam2}
+\usepackage{javalistings}
+%\usepackage{latexsym,graphicx,tech,javalistings}
+%\DeclareSymbolFontAlphabet{\bbold}{AMSb}
+\def\imarks#1{\quad\hspace*{\fill}{[#1]}}
+\def\color#1{}
+\Small
+\begin{document}
+\paper{Concurrent Programming}
+
+%% Notes for Examiners:
+%% %
+%% \begin{itemize}
+%% \item[1]
+%% A problem to calculate values defined by a recurrence relation.  The
+%% difficulty is in ensuring that processes calculate values in a suitable
+%% order. 
+
+
+%% \item[2]
+%% A program to find a spanning tree in a network of nodes.  
+%% %% I wonder whether I
+%% %% should give more of a hint in part~(a), along the lines of:
+%% %% %
+%% %% \begin{itemize}
+%% %% \item
+%% %% Node 0 should start by sending a message to each of its neighbours;
+
+%% %% \item
+%% %% The first time that a node receives a message, it should accept the sender of
+%% %% the message as its parent, and should send a message on to all of its other
+%% %% neighbours. 
+%% %% \end{itemize}
+
+
+
+%% \item[3] 
+%% A synchronization problem (the single-lane bridge), to be
+%% solved using message passing, a monitor, and semaphores.
+
+%% \end{itemize}
+
+%\newpage
+\input{recurrence}
+\newpage
+\input{spanningTree}
+\newpage
+\input{bridge}
+\end{document}

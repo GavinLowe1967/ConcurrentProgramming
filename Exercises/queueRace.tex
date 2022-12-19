@@ -1,0 +1,133 @@
+\begin{question}
+\begin{figure}
+\begin{scala}
+class Queue[A]{
+  /** A node in the linked list. */
+  private class Node(val datum: A, var next: Node)
+
+  /** The dummy header node. */
+  private var head = new Node(null.asInstanceOf[A], null)
+
+  /** The last node in the list. */
+  private var last = head
+
+  /** Is the queue empty? */
+  def isEmpty = last == head
+
+  /** Add x to the queue. */
+  def enqueue(x: A) = {
+    val node = new Node(x, null); last.next = node; last = node
+  }
+
+  /** Dequeue a value.  Pre: the queue is not empty. */
+  def dequeue: A = {
+    require(!isEmpty); head = head.next; head.datum
+  }
+}
+\end{scala}
+\caption{A sequential queue based on a linked list.}
+\label{fig:queue}
+\end{figure}
+
+Figure~\ref{fig:queue} gives the implementation of a queue based on a linked
+list.  The implementation is correct when the queue is used sequentially.
+However, if the queue is used concurrently (i.e.~with two or more threads
+calling the operations concurrently), then it can go wrong in a number of
+different ways.  
+%
+%I have spotted six essentially different ways in which it can go wrong.
+Describe as many as possible essentially different ways in which it can go
+wrong (I have spotted six essentially different ways).
+%
+For the purposes of this question, you should ignore problems caused by
+caching or compiler optimisations (those introduce many more ways in which the
+implementation can go wrong).
+\end{question}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{answer}
+A thoughtful student might ask ``What does correct mean, here?''  The property
+we would like is that the operation invocations appear to take place in a
+one-at-a-time order (so without interfering with one another), in an order
+compatible with the temporal order of the invocations (so if one invocation
+returns before the other is called, they should have an effect in that order),
+and giving results as one would expect for a sequential execution.  This
+property is called \emph{linearization}: we'll see it later in the course.  It
+fits with programmers' mental models. 
+
+Here are some problems I spotted.  I'm sure there are others.
+%%   In these examples, I will assume that there are no issues concerning
+%% caches or compiler optimisations: such issues will introduce many more ways
+%% of things going wrong.  %
+\begin{enumerate}
+\item
+The signature isn't really suitable for a concurrent datatype.  Consider code
+like the following, to check the precondition of the |dequeue| operation:
+%
+\begin{scala}
+  if(!queue.isEmpty){ val x = queue.dequeue; ... }
+\end{scala}
+%
+A thread~$t$ could check that the queue is non-empty; then other threads could
+perform |dequeue|s so as to empty the queue; then when $t$ calls |dequeue|,
+the |require| check will fail.  Better would be to have a signature such as
+\begin{scala}
+  def dequeue: Option[A] = ...
+\end{scala}
+that returns |None| when the queue is empty, or |Some(x)| if |x| is dequeued.
+
+%%%%%
+
+\item (Somewhat similar to the previous item.)  A thread~$t$ could call
+  |dequeue| when the queue is non-empty, so the |require| passes.  But then
+  other threads could perform dequeues, to leave the queue empty (so
+  \SCALA{head.next = null}).  When $t$ continues, it sets |head| to null, and
+  the expression |head.datum| gives a null-pointer exception.
+
+%%%%%
+
+\item Suppose threads~$t_1$ and~$t_2$ call |enqueue| concurrently, enqueueing
+  $x_1$ and~$x_2$, respectively.  Each creates a new node, $n_1$ and~$n_2$.
+  Then if $t_1$ and~$t_2$ each updates |last.next| to point to their node, in
+  that order, the latter will overwrite the former, so $n_1$ isn't connected
+  to the list (so the~$x_1$ is lost).  Further, if $t_2$ then updates |last|
+  before~$t_1$, then it will end up pointing to~$n_1$, so |last| will no
+  longer be reachable from |head|; this means that the results of all
+  subsequent enqueues will be lost.
+
+%%%%%
+
+\item Now suppose threads~$t_1$ and~$t_2$ call |dequeue| concurrently, and
+  each reads |head| obtaining the same node~$n$.  Then both will set |head| to
+  $n$|.next|, and both will return $n$|.datum|: the same value is dequeued
+  twice.
+
+%%%%%
+
+\item Suppose thread $t_1$ calls |dequeue|, and advances |head| to node~$n_1$,
+  but stalls before reading |head.datum|.  Suppose now thread~$t_2$ calls
+  dequeue, advances |head| to $n_2 = n_1$|.next|, and returns $n_2$|.datum|.
+  Then thread~$t_1$ can resume, read |head = |$n_2$, and
+  return $n_2$|.datum|.  This value has been returned twice, but the value
+  in~$n_1$ was lost. 
+
+\item Suppose thread $t_1$ calls |isEmpty| when the list contains two nodes,
+  $n_1 = \sm{head}$ and $n_2 = \sm{last}$ with $n_1.\sm{next} = n_2$; and
+  suppose it reads $\sm{last} = n_2$ and stalls.  Suppose then thread~$t_2$
+  enqueues another value; and then thread~$t_3$ dequeues a value, setting
+  $\sm{head} = n_2$.  Then $t_1$ can resume and read $\sm{head} = n_2$; it
+  returns |true| even though the queue was non-empty throughout the
+  invocation. 
+%
+  Changing the definition to
+  \begin{scala}
+  def isEmpty = head == last
+  \end{scala}%
+  avoids this problem (assuming no compiler optimisations, etc.).
+\end{enumerate}
+
+A solution (to the last five issues) is to adapt the implementation so that
+each invocation runs in isolation.  This is the approach we'll adopt later in
+the course.  
+\end{answer}

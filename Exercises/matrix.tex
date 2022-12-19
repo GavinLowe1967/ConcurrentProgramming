@@ -1,0 +1,119 @@
+\begin{question}
+\Programming\ Write a concurrent program to multiply two large $n$ by $n$
+matrices~|a| and~|b| together, storing the result in matrix~|c|.  You should
+use the bag-of-tasks pattern.  You should consider what a suitable ``task''
+should be: remember that making a task too small will mean that workers spend
+most of their time waiting to receive the next task.  \textbf{Optional:} carry
+out some experiments to assess different sizes of tasks.
+% You will probably want to represent each matrix by a two dimensional array.
+% Such an array can be initialised in Scala using, e.g.:
+% %
+% \begin{scala}
+% var a = new Array[Array[Int]](N,N);
+% \end{scala}
+% %
+% The element in position $(i,j)$ can be accessed using \SCALA{a(i)(j)}.
+\end{question}
+
+%%%%%
+
+\begin{answer}
+It makes sense to define a \emph{task} to be the creation of several rows of
+the result, say \SCALA{taskSize} rows.  
+% The communication overhead is
+% $\Theta(n/taskSize)$, so for large arrays, having a task as a single row
+% (i.e.\ taking $taskSize=1$) would probably be too small a task (although the
+% communication overhead of using a single row would be reasonably small
+% compared to the $\Theta(N^3)$ computational cost).  
+Taking a task to be a single entry in the result would be too small a task: it
+would give a $\Theta(n^2)$ communication overhead.  Using a whole number of
+rows (or columns) is easier to program than any other way of splitting up the
+problem (e.g.\ into square regions).
+
+There is no need for the workers to return any result to the controller: each
+worker can write directly into the result array.  Note that since the tasks
+write to disjoint parts of the result array, there are no race conditions. 
+
+Here's my code:
+%
+\begin{scala}
+class Matrix(a: Array[Array[Int]], b: Array[Array[Int]], numWorkers: Int, taskSize: Int){
+  private val n = a.size
+
+  /** Array to store the result. */
+  private var c = Array.ofDim[Int](n,n)
+
+  /** A task.  The pair (start,end) represents the task of calculating rows [start..end). */
+  private type Task = (Int,Int) 
+
+  /** Channel for sending tasks. */
+  private val toWorkers = OneMany[Task]
+
+  /** A worker: repeatedly receive tasks, and calculate the relevant rows. */
+  private def worker = proc{
+    repeat{
+      val(start,end) = toWorkers?()
+      for(i <- start until end; j <- 0 until n){
+	// Calculate value for c(i)(j)
+	var sum = 0
+	for(k <- 0 until n) sum += a(i)(k)*b(k)(j)
+	c(i)(j) = sum
+      }
+    }
+  }
+
+  /** The controller: repeatedly allocate tasks of size taskSize. */
+  private def controller = proc{
+    var current = 0
+    while(current < n){
+      toWorkers!(current, current+taskSize min n)
+      current += taskSize
+    }
+    toWorkers.close
+  }
+
+  /** calculate the product of a and b. */
+  def apply(): Array[Array[Int]] = {
+    run(|| (for(w <- 0 until numWorkers) yield worker) || controller)
+    c
+  }
+}
+\end{scala}
+
+I ran some informal experiments based around the following function.  The
+``warm up'' part is to avoid the effects of JIT compilation.
+%
+\begin{scala}
+  /** Measure times for different task sizes, for matrices of size n and
+    * numWorkers worker threads. */
+  def timingTest(n: Int, numWorkers: Int) = {
+    // # reps; chosen to spend ~3s per task size
+    val reps = (300L*Million*numWorkers/(n.toLong*n*n)).toInt
+    println("reps = "+reps)
+    // Warm up
+    for(_ <- 0 until reps){
+      val a = randomArray(n); val b = randomArray(n)
+      val c = new Matrix(a, b, numWorkers, 2)()
+    }
+    println("starting")
+    for(taskSize <- 1 until 10){
+      var elapsed = 0L
+      for(_ <- 0 until reps){
+        val a = randomArray(n); val b = randomArray(n)
+        val start = System.nanoTime
+        val c = new Matrix(a, b, numWorkers, taskSize)()
+        elapsed += System.nanoTime-start
+      }
+      println(taskSize+"\t"+elapsed/Million+"ms")
+    }
+  }
+\end{scala}
+%
+For small values of |n| (around 200) a task size of 2 was often best; with
+smaller tasks, the $O(\sm n^2/\sm{taskSize})$ communication overhead meant
+that the controller was a bottleneck.  For larger values of |n|, a task size
+of~1 was best; each task has $O(\sm n^2)$ computational cost, which is
+sufficiently large that the controller is not a bottleneck; and having more
+tasks gives better load balancing.  It might be interesting to run experiments
+with smaller tasks, say to calculate part of a row of the result.
+\end{answer}

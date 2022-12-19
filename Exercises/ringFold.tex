@@ -1,0 +1,150 @@
+\begin{question}
+\Programming\ Suppose $n$ threads are connected in a ring.  Each process~$i$
+(for $i = 0, \ldots, n-1$) initially holds a value~$x_i: T$.  Write a
+concurrent program so that each thread ends up in possession of the value
+\[
+f(f(f(\ldots f(x_0, x_1), x_2) \ldots ), x_{n-1}),
+\]
+for some given function $f$; or using functional programming notation:
+\[
+\mathrm{foldl1}~f~ List(x_0, x_1, \ldots, x_{n-1})
+\]
+Give your program the following signature
+%
+\begin{scala}
+class RingFold[T](xs: Array[T], f: (T,T) => T, outs: Array[Chan[T]]){
+  def apply(): PROC = ...
+}
+\end{scala}
+%
+Each thread should output its final result on the appropriate |out| channel.
+You should state properties that hold at key points of your program, for
+example concerning the values passed on channels.
+
+Test your code. 
+
+What property of~$f$ will allow a different program that achieves the same
+goal?  Explain your answer, and outline how this can be achieved.  (A full
+implementation is not necessary.)
+\end{question}
+
+%%%%%
+
+\begin{answer}
+\Small
+This is a polymorphic generalisation of an example seen in lectures.
+
+A single token is passed twice round the ring.  Write $xs$ for the list of
+all~$x$ values, and use (hopefully) obvious notation for subsequences.  On the first cycle the desired
+value is built up: the value sent by node~$me$ equals
+\[
+\mathrm{foldl1}~f~ xs[0..me] = 
+  f(f(f(\ldots f(x_0, x_1), x_2) \ldots ), x_{me}),
+\]
+This is easily proven by induction.  Hence node~0 receives back the desired
+result, which then gets past round the ring on the second cycle.
+
+My code is below.  For testing purposes, I've arranged for each node to output
+its final value on one of the |outs| channels. 
+%
+\begin{scala}
+/** A ring of node threads.  The ith node holds the value xs(i).  Each ends
+  * up with the value of foldleft f xs.  Node i outputs its final value on
+  * outs(i).  */
+class RingFold[T](xs: Array[T], f: (T,T) => T, outs: Array[Chan[T]]){
+  private val n = xs.length
+  require(n >= 2 && outs.length == n)
+
+  /** The channels connecting nodes, indexed by the recipient's identity:
+    * node(i) receives on chans(i) and sends on chans((i+1)%n). */
+  private val chans = Array.fill(n)(OneOne[T]) 
+
+  /** A single node. */
+  private def node[T](me: Int) = proc{
+    val left = chans(me); val right = chans((me+1)%n)
+    val out = outs(me); val x = xs(me)
+    if(me == 0){
+      right!x // Start things going; = foldl1 f xs[0..me]
+      val result = left?() // Receive final result; = foldl1 f xs
+      right!result  // Pass it on
+      left?()       // Receive it back at the end
+      out!result
+    }
+    else{
+      val y = left?() // y = foldl1 f xs[0..me-1]
+      right!f(y,x)    // = foldl1 f xs[0..me]
+      val result = left?(); right!result // Receive final result and pass it on
+      out!result
+    }
+  }  
+
+  /** The complete ring. */
+  def apply(): PROC = || (for(i <- 0 until n) yield node(i))
+}
+\end{scala}
+
+Most of my testing code is below.  (This also works with the solution for the
+final part of the program.)  A subsidiary |checker| process receives all the
+final values, and checks that they are as expected.
+%  
+\begin{scala}
+  /** A process that expects to receive expected on each channel in chans, and
+    * throws an exception if an incorrect value is received. */
+  def checker(chans: Array[Chan[Int]], expected: Int) = proc{
+    for(chan <- chans){ val res = chan?(); assert(res == expected) }
+  }
+
+  /** A single test of either RingFold or RingFold1, using random values.
+    * @param assoc use RingFold1 if true */
+  def doTest(assoc: Boolean) = {
+    val n = 2+Random.nextInt(20)
+    val xs = Array.fill(n)(Random.nextInt(100))
+    val outs = Array.fill(n)(OneOne[Int])
+    def f(x: Int, y: Int) = if(assoc) x+y else 2*x+y
+    val rf: PROC =
+      if(assoc) new RingFold1[Int](xs, f, outs)()
+      else new RingFold[Int](xs, f, outs)()
+    (rf || checker(outs, xs.foldLeft(0)(f)))()
+  }
+\end{scala}
+
+
+If $f$ is associative and commutative, then a different protocol is possible.
+On the first round, each node sends its initial value to its neighbour.  On
+each subsequent round, each node applies $f$ to the value it receives and its
+own initial value, and passes the result on.  On each round~$r$ (counting
+from~0), every node~$me$ sends the value
+\[
+foldl1~f~xs[me-r..me] =
+  f(f(f(\ldots f(x_{me-r}, x_{me-r+1}), x_{me-r+2}) \ldots ), x_{me}),
+\]
+to node~$me+1$ (where all indices are interpreted mod $n$).  After $n$
+rounds, all nodes have the desired final value.  The channels need to be
+buffered to avoid deadlocks, obviously.  The changes from the previous code
+are below.  
+\begin{scala}
+  /** The channels connecting nodes, indexed by the recipient's identity:
+    * node(i) receives on chans(i) and sends on chans((i+1)%n).  The channels
+    * need to be buffered. */
+  private val chans = Array.fill(n)(OneOneBuf[T](1)) 
+
+  /** A single node. */
+  private def node[T](me: Int) = proc{
+    val left = chans(me); val right = chans((me+1)%n)
+    val out = outs(me); val x = xs(me); var y = x
+    // Inv: at the start of round r, y = foldl1 f xs[me-r..me], where the indices
+    // are interpreted mod n. 
+    for(r <- 0 until n-1){
+      right!y         // = foldl1 f xs[me-r..me]
+      val z = left?() // = foldl1 f xs[me-1-r..me-1]
+      y = f(z, x)     // = foldl1 f xs[me-(r+1)..me], maintaining invariant
+    }
+    // y = foldl1 f xs[me-(n-1)..me] = foldl1 f xs since f is AC.
+    out!y
+  }  
+\end{scala}
+%
+The comment concerning |z| is justified by the fact that this value was sent
+by node~|me-1|, which is running the same protocol, and must have sent this
+value on its round |r| (since the channels are FIFO). 
+\end{answer}

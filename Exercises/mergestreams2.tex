@@ -1,0 +1,80 @@
+\begin{question}
+\Programming\
+Write a definition for a process
+%
+\begin{scala}
+def Merge(left: ?[Int], right: ?[Int], out: ![Int]) 
+= proc ...
+\end{scala}
+%
+that inputs two ascending non-empty streams of integers on \SCALA{left} and
+\SCALA{right}, merges them into a single ascending stream, and outputs that on
+\SCALA{out}.  The process should hold at most one value at a time from each of
+the input streams.  You should think carefully about what to do when one of
+the streams is closed. 
+% You may not use \SCALA{ox.cso.Components.merge}.
+\end{question}
+%
+\begin{answer}
+When one of the input channels is closed, causing the program to break out of
+the \SCALA{repeat} loop below, we need to know whether the values of \SCALA{l}
+and \SCALA{r} have already been output; we use the flag \SCALA{invalid} for
+this.
+%
+\begin{scala}
+import ox.CSO._
+import ox.cso.Components._
+
+object MergeStreams{
+  // Merge two non-empty ascending streams
+  def Merge(left: ?[Int], right: ?[Int], out: ![Int]) 
+  = proc("Merge"){
+    // Invariant: l is last value read from left; r is 
+    // last value read from right; when the repeat loop 
+    // exits due to a channel closing, invalid is 0 if the
+    // value in l is invalid (has already been output), 
+    // and invalid is 1 if the value in r is invalid.
+    var l = left?; var r = right?; var invalid = -1;
+    repeat{
+      if(l<=r){ out!l; invalid=0; l=left? }
+      else{ out!r; invalid=1; r=right? }
+    }
+    println("channel closed")
+    if(invalid==1){ out!l; repeat{ out!(left?) } }
+    if(invalid==0){ out!r; repeat{ out!(right?) } }
+    out.close;
+  }
+
+  val random = new scala.util.Random ;
+
+  // Produce an ascending stream of n Ints on out
+  def Producer(n:Int, out: ![Int]) = proc("Producer"){
+    var current = 0;
+    for(i <- 0 until n){ 
+      current += random.nextInt(5); 
+      println("producing "+current); 
+      out!current;
+    }
+    out.close
+  }
+
+  val left = OneOne[Int]; 
+  val right = OneOne[Int];
+  val out = OneOne[Int];
+
+  def System(n:Int) = (
+    Merge(left, right, out) || Producer(n, left) 
+    || Producer(n, right) || console(out) 
+  )
+
+  def main(args : Array[String]) = 
+    System( 
+      if(args.length>0)
+        Integer.valueOf(args(0)).intValue()
+      else 10 
+    )();
+}
+\end{scala}
+%
+[Students should provide some sensible test results.]
+\end{answer}

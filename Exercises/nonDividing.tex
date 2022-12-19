@@ -1,0 +1,17 @@
+\begin{nontutequestion}
+In the numerical integration example, we assumed that the number $n$ of
+intervals was divisible by the number $ntasks$ of tasks.  How can
+we remove this assumption?
+\end{nontutequestion}
+
+%%%%%
+
+\begin{nontuteanswer}
+The easiest thing to do is to make most tasks of size $\lceil n/ntasks
+\rceil$, and to make the last task appropriately smaller.  Making the last
+task smaller is likely to make the overall computation finish faster.
+
+It is possible to use a more sophisticated scheme, where all the tasks are of
+size $\lceil n/ntasks \rceil$ or $\lfloor n/ntasks \rfloor$, but, frankly,
+these don't give any benefits.
+\end{nontuteanswer}

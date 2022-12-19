@@ -1,0 +1,131 @@
+\begin{question}\label{Q:consumerM}
+\Programming\ 
+%
+Consider the following producer-consumer problem.  Several producers each
+produce one piece of (integer) data at a time, which they place into a buffer
+using a method \SCALA{put(item: Int)}.  These are accumulated into an array of
+size $n$.  A consumer can receive that array, once it is full, using the
+method \SCALA{get : Array[Int]}.  
+
+Implement the buffer as a monitor.  The consumer should be blocked until the
+array is full, and the producers should be blocked once the array is full.
+
+Write testing code for your implementation.  (If you use the
+linearizability testing framework, then remember that the results of
+the concurrent and sequential operations need to be comparable using
+``|==|'', which won't be the case for |Array[Int]|; I suggest you cast
+the results to |List[Int]|.)
+\end{question}
+
+%%%%%
+
+\begin{answer}
+My code is below.
+%
+\begin{scala}
+class ProducerConsumer(n: Int){
+  require(n >= 1)
+
+  /** Array to hold the data. */
+  private var a = new Array[Int](n)
+
+  /** Number of items added to a so far. */
+  private var count = 0
+
+  /** Monitor to control synchronisation. */
+  private val monitor = new Monitor
+
+  /** Condition for signalling that the old buffer has been taken. */
+  private val notFull = monitor.newCondition
+
+  /** Condition for signalling that the buffer has been filled. */
+  private val full = monitor.newCondition
+
+  /** Add x to the buffer, waiting until it is not full. */
+  def put(x: Int) = monitor.withLock{
+    notFull.await(count < n)
+    a(count) = x; count += 1
+    if(count == n) full.signal() // signal to consumer
+  }
+
+  /** Get the contents of the buffer, once it is full. */
+  def get: Array[Int] = monitor.withLock{
+    if(count < n) full.await()
+    val result = a
+    a = new Array[Int](n); count = 0
+    notFull.signalAll() // signal to all producers 
+    result    
+  }
+}
+\end{scala}
+%
+Note that the producer has to re-check the condition each time it is awoken,
+since there are multiple producers, and it is possible that other producers
+have filled the new buffer in the meantime.  However, there is no need for the
+consumer to re-check the condition when re-awoken, since there is only one
+consumer, and the implementation of conditions guards against spurious
+wake-ups. 
+
+My testing code is below.
+%
+\begin{scala}
+import ox.cads.testing._
+
+object ProducerConsumerTest{
+  var iters = 200 // # iterations by each worker
+  var maxValue = 20  // max value added to the stack
+  var reps = 1000 // # runs
+  var n = 4  // Size of each buffer; also the number of producers (to avoid deadlock).
+
+  // Sequential specification type.  Note the sequential specification type
+  // needs to be immutable, and comparable using "==", so we can't use an 
+  // array here.
+  type S = List[Int]
+
+  // Sequential put operation
+  def seqPut(x: Int)(buffer: S): (Unit, S) = {
+    require(buffer.length < n); ((), buffer :+ x)
+  }
+  // It might be better to build buffer in reverse, to avoid the O(n) ":+"
+
+  // Sequential get operation.
+  def seqGet(buffer: S): (List[Int], S) = {
+    require(buffer.length == n); (buffer, List[Int]())
+  }
+
+  // A worker thread
+  def worker(me: Int, log: GenericThreadLog[S,ProducerConsumer]) = {
+    val random = new scala.util.Random
+    for(i <- 0 until iters){
+      if(me == 0) // consumer
+        log.log(_.get.toList, "get", seqGet)
+      else{
+        val x = random.nextInt(maxValue)
+        log.log(_.put(x), "put("+x+")", seqPut(x))
+      }
+    }
+  }
+  // Note that with the get method, we cast the result to a List, to allow
+  // comparison using "==".
+
+  // The main method
+  def main(args: Array[String]) = {
+    for(i <- 0 until reps){
+      val concBuffer = new ProducerConsumer(n)
+      val seqBuffer = List[Int]()
+      val tester = LinearizabilityTester.JITGraph[S, ProducerConsumer](
+        seqBuffer, concBuffer, n+1, worker _, iters)
+      assert(tester() > 0)
+      if(i%10 == 0) print(".")
+    }
+    println; exit
+  }
+}
+\end{scala}
+%
+Note that we use a |List| for the sequential specification, since an
+\emph{immutable} datatype should be used here.  Also, we cast the result of
+the concurrent |get| to a |List|, and arrange for the sequential version to
+also return a |List|, so that the two can be compared using ``|==|'' (over
+arrays, ``|==|'' is reference equality, which would be wrong here). 
+\end{answer}

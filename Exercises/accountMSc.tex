@@ -1,0 +1,286 @@
+\begin{question}
+Consider the following synchronisation problem.  A savings account is shared
+by $N$ people, each represented by a process.  Each process can make
+deposits and/or withdrawals.  The account records the current balance; this
+may never go negative.  As a result, a withdrawal may be blocked until
+sufficient funds become available.  
+
+The aim of this question is to implement the account using the three different
+types of concurrency primitive: message passing, monitors and semaphores.  In
+each part of the question you should use only the concurrency primitive
+mentioned. 
+
+Throughout this question, the system does not need to be fair as to which
+pending deposit is unblocked once sufficient funds become available.
+
+For each part, you should provide suitable testing code.
+
+%%%%%%
+
+\begin{enumerate}
+\item
+Implement the account using a server process with message passing.  Clients
+should send requests on an appropriate request channel.  When the request is
+serviced, the server should reply on an appropriate reply channel, passing the
+current account balance.
+                                                                \marks{10}
+
+%%%%%
+
+\item
+Now implement the account as a monitor, with \SCALA{Credit} and \SCALA{Debit}
+procedures; each procedure should return the balance after the operation
+completes. 
+%
+%%  the following signature:
+%% %
+%% \begin{scala}
+%% object Account{
+%%   def Credit(amount:Int, c:ClientId) : Int = ...
+%%   def Debit(amount:Int, c:ClientId) : Int = ...
+%% }
+%% \end{scala}
+%% %
+%% where \SCALA{amount}     
+                                                        \marks{8}
+
+%%%%%
+
+\item
+Finally, implement the account using semaphores; you should use an object with
+a similar interface to the previous part.
+%
+%% {\bf Hint:} you might find it useful to use an array of semaphores, one for
+%% each client process, on which it waits when a withdrawal is blocked
+%
+                                                               \marks{12}
+\end{enumerate}
+{\bf(Total: 30 marks)}
+\end{question}
+
+%%%%%%%%%%
+
+\begin{answer}
+\Footnotesize
+{\bf Part a.}
+%
+\begin{scala}
+import ox.CSO._
+
+object AccountCS{
+  val N = 5;
+
+  type ClientId = Int
+  abstract class Request;
+  case class Deposit(n:Int, c:ClientId) extends Request;
+  case class Withdrawal(n:Int, c:ClientId) extends Request;
+
+  def Server(req: ?[Request], resp: Seq[![Int]]) = proc{
+    var balance = 0; // current balance
+    val deposits = new Array[Int](5); 
+      // amounts of queued deposits; 
+      // -1 represents nothing queued
+    for(i <- 0 until N) deposits(i) = -1; 
+ 
+    repeat(
+      req? match {
+	case Deposit(n,c) => {
+	  balance += n;
+	  resp(c)!balance;
+	  for(i <- 0 until N)
+	    if(deposits(i)>0 && deposits(i)<=balance){
+	      balance -= deposits(i); deposits(i) = -1; 
+	      resp(i)!balance;
+	    }
+	}
+	case Withdrawal(n,c) => 
+	  if(n<=balance){ balance -= n; resp(c)!balance; }
+	  else deposits(c) = n;
+      }
+    )
+  }
+	    
+  val random = new scala.util.Random;
+
+  def Agent(me: Int, req: ![Request], resp: ?[Int]) = proc{
+    while(true){
+      sleep(random.nextInt(1000));
+      val amount = 1+random.nextInt(10); 
+      if(random.nextInt(2)==0){
+	req ! Withdrawal(amount, me);
+	println("Attempt to withdraw £"+amount);
+	val balance = resp?;
+	println("Withdraw of £"+amount+
+		" succeeds; balance now "+balance);
+      }
+      else{
+	req ! Deposit(amount, me);
+	val balance = resp?;
+	println("Deposit of £"+amount+"; balance now "+balance);
+      }
+    }
+  }
+
+  val req = ManyOne[Request];
+  val resp = OneOne[Int](N);
+
+
+  def Agents =
+    || ( for(i <- 0 until N) yield Agent(i, req, resp(i)) )
+
+  def System = Server(req, resp) || Agents;
+
+  def main(args: Array[String]) = System();
+}
+\end{scala}
+
+%%%%%
+
+\noindent
+{\bf Part b.}
+%
+\begin{scala}
+import ox.CSO._
+
+object AccountM{
+  object Account{
+    private var balance = 0; // current balance
+
+    def Credit(amount:Int) : Int = synchronized{
+      balance += amount;
+      notifyAll();
+      return balance;
+    }
+
+    def Debit(amount:Int) : Int = synchronized{
+      while(balance<amount) wait();
+      balance -= amount;
+      return balance;
+    }
+  }
+
+  val random = new scala.util.Random;
+
+  def Agent = proc{
+    while(true){
+      sleep(random.nextInt(1000));
+      val amount = 1+random.nextInt(10); 
+      if(random.nextInt(2)==0){
+	println("Attempt to withdraw £"+amount);
+	val balance = Account.Debit(amount);
+	println("Attempt to withdraw £"+amount+
+		" succeeds; balance now "+balance);
+      }
+      else{
+	val balance = Account.Credit(amount);
+	println("Deposit of £"+amount+"; balance now "+balance);
+      }
+    }
+  }
+
+  val agents = 5;
+
+  def System = || ( for(i <- 0 until agents) yield Agent )
+
+  def main(args: Array[String]) = System();
+}
+\end{scala}
+
+%%%%%
+
+\noindent
+{\bf Part c.}
+%
+\begin{scala}
+import ox.CSO._
+
+object AccountS{
+  val N = 5;
+
+  object Account{
+    private var balance = 0; // current balance
+
+    // Semaphores and amounts for pending deposits
+    val sems = new Array[Semaphore](N);
+    val amounts = new Array[Int](N); 
+    for(i <- 0 until N){ 
+      sems(i) = new Semaphore; sems(i).down; amounts(i) = -1; 
+    }
+
+    val mutex = new Semaphore; // For mutual exclusion
+
+    // Wake up a waiting process, or lift mutex
+    private def Signal = {
+      println("Signal: "+amounts.toString+"; "+balance);
+      var n = 0;
+      // Find process to wake up
+      while(n<N && (amounts(n)<0 || amounts(n)>balance)) n += 1;
+      if(n<N){ // wake up waiting debit
+	assert(amounts(n)>=0 && amounts(n)<=balance);
+	println("Process "+n+" being woken");
+	amounts(n) = -1;
+	sems(n).up;
+      }
+      else{
+	println("None woken"); mutex.up;
+      }
+    }
+
+    def Credit(amount:Int, id:Int) : Int = {
+      println("Credit of "+amount);
+      mutex.down;
+      balance += amount;
+      val result = balance;
+      Signal;
+      return result;
+    }
+
+    def Debit(amount:Int, id:Int) : Int = {
+      mutex.down;
+      var result = 0;
+      if(balance<amount){
+	println("Debit of "+amount+" sleeps");
+	amounts(id) = amount;
+	mutex.up; sems(id).down; // wait to be woken
+	println("Debit of "+amount+" woken");
+	assert(amount <= balance);
+	// Can now proceed
+	balance -= amount;
+	result = balance;
+	Signal;
+      }
+      else{ // Can proceed immediately
+	balance -= amount;
+	result = balance;
+	mutex.up;
+      }
+      return result;
+    }
+  }
+
+  val random = new scala.util.Random;
+
+  def Agent(me:Int) = proc{
+    while(true){
+      sleep(random.nextInt(1000));
+      val amount = 1+random.nextInt(10); 
+      if(random.nextInt(2)==0){
+	println("Attempt to withdraw £"+amount);
+	val balance = Account.Debit(amount, me);
+	println("Withdraw of £"+amount+
+		" succeeds; balance now "+balance);
+      }
+      else{
+	val balance = Account.Credit(amount, me);
+	println("Deposit of £"+amount+"; balance now "+balance);
+      }
+    }
+  }
+
+
+  def System = || ( for(i <- 0 until N) yield Agent(i) )
+
+  def main(args: Array[String]) = System();
+}
+\end{scala}
+\end{answer}

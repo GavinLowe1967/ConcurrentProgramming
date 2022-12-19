@@ -1,0 +1,106 @@
+\begin{question}
+\Programming\
+Consider the following synchronisation problem.  Each process has an
+integer-valued identity.  A particular resource should be accessed according
+to the following constraint: a new process can start using the resource only
+if the sum of the identities of those processes currently using it is
+divisible by~3.  Implement a monitor with procedures \SCALA{enter(id: Int)} and
+\SCALA{exit(id: Int)} to enforce this.  
+
+Write a testing framework for your monitor using the linearizability
+framework.  \textbf{Hint:} one approach is to use an immutable |Set[Int]| as
+the sequential specification object, representing the set of identities of
+processes currently using the resource, and to include a suitable precondition
+for the sequential version of |enter|.
+\end{question}
+
+%%%%%
+
+\begin{answer}
+Here's my code.
+%
+\begin{scala}
+class Mod3M{
+  /** Sum of identites of processes currently in critical region. */
+  private var current = 0
+
+  /** Enter the critical region. */
+  def enter(id: Int) = synchronized{
+    while(current%3 != 0) wait()
+    current += id
+    if(current%3 == 0) notify()
+  }
+
+  /** Leave the critical region. */
+  def exit(id: Int) = synchronized{
+    current -= id
+    if(current%3 == 0) notify()
+  }
+}
+\end{scala}
+
+Alternatively, one can note that the following is invariant: at most one
+process whose identity is not divisible by 3 is present at any time.
+Therefore it would be enough to store a boolean recording whether such a
+process is currently present.
+
+Here's my testing code, using the linearizability framework. 
+%
+\begin{scala}
+import ox.cads.testing._
+
+object Mod3MTest{
+  var iters = 200 // # iterations by each worker; each iteration is two ops
+  var reps = 1000  // # runs
+  var numWorkers = 4 // # workers
+
+  // Sequential specification: the identities of threads currently in the
+  // critical region
+  type S = scala.collection.immutable.Set[Int]
+
+  // Corresponding sequential operations. 
+  def seqEnter(id: Int)(current: S): (Unit, S) = {
+    require(current.sum%3 == 0); ((), current+id)
+  }
+
+  def seqExit(id: Int)(current: S): (Unit, S) = {
+    require(current.contains(id)); ((), current-id)
+  }
+
+  // A worker thread
+  def worker(me: Int, log: GenericThreadLog[S,Mod3M]) = {
+    for(i <- 0 until iters){
+      log.log(_.enter(me), "enter("+me+")", seqEnter(me))
+      log.log(_.exit(me), "exit("+me+")", seqExit(me))
+    }
+  }
+
+  // The main method
+  def main(args: Array[String]) = {
+    for(i <- 0 until reps){
+      val mon = new Mod3M
+      val tester = LinearizabilityTester.JITGraph[S, Mod3M](
+        0, mon, numWorkers, worker _, 2*iters)
+      assert(tester() > 0)
+      if(i%10 == 0) print(".")
+    }
+    println
+  }
+}
+\end{scala}
+
+Alternatively, the testing could be based on a sequential specification object
+that just records the sum of the identities of current threads.
+%
+\begin{scala}
+  type S = Int
+
+  def seqEnter(id: Int)(current: S): (Unit, S) = {
+    require(current%3 == 0); ((), current+id)
+  }
+
+  def seqExit(id: Int)(current: S): (Unit, S) = {
+    require(id <= current); ((), current-id)
+  }
+\end{scala}
+\end{answer}

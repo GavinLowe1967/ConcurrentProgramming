@@ -1,0 +1,322 @@
+\begin{question}
+\Programming
+\begin{enumerate}
+\item
+%\label{part:a}
+Suppose $n^2$ worker processes are arranged in a $n$ by $n$ toroidal grid.
+Each process starts with an integer value $x$.  The aim is for each process to
+end up in possession of the maximum of these $n^2$ values.  Each process may
+send messages to the processes above it and to the right of it in the grid
+(where we treat the bottom row as being above the top row, and the left hand
+column as being to the right of the right hand column).
+
+Write code solving this problem, making use of a worker process:
+%
+\begin{scala}
+def worker(i: Int, j: Int, x: Int, readUp: ?[Int], writeUp: ![Int], 
+	   readRight: ?[Int], writeRight: ![Int]) = proc{ ... }
+\end{scala}
+%
+Give your code the following signature, where |xss| gives the values initially
+held by the processes:
+%
+\begin{scala}
+class GridMax(n: Int, xss: Array[Array[Int]]){
+  require(n >= 1 && xss.length == n && xss.forall(_.length == n))
+
+  /** Run the system, and return array storing results obtained. */
+  def apply(): Array[Array[Int]] = ...
+}
+\end{scala}
+%
+Test your code using the test harness on the course website.
+
+
+%%%%%
+
+%% \item
+%% Explain what is means by a \emph{barrier synchronisation}.  
+
+%% Show how to implement a barrier synchronisation between $M$ processes so that
+%% each synchronisation takes $\Theta(\log M)$ steps.      %        \marks{9}
+
+%%%%%
+
+\item Now consider the same scenario as in the previous part, except assume
+each process can send messages to any other processes.  We now want a solution
+that takes $O(\log n)$ rounds.
+
+Write code to solve this problem, making use of a worker process:
+%
+\begin{scala}
+def worker(i: Int, j: Int, x: Int, read: ?[Int], write: List[List[![Int]]]) = proc{ ... }
+\end{scala}
+%
+The process can send values to another process \SCALA{(i1, j1)} on the channel
+\SCALA{write(i1)(j1)}, and can receive messages from other processes on the
+channel~\SCALA{read}.  You should briefly explain your solution.  Again, test
+your code using the test harness provided.
+
+What is the total running time of the program (in $\Theta(\_)$ notation),
+assuming as many processors as processes?
+
+%% \item Write a test harness for your two programs. 
+\end{enumerate}
+\end{question}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{answer}
+%\Footnotesize
+\begin{enumerate}
+\item
+We'll treat the channels as being buffered (alternatively, arrange for the
+reads and writes, below, to be concurrent).
+%
+\begin{scala}
+class GridMax(n: Int, xss: Array[Array[Int]]){
+  require(n >= 1 && xss.length == n && xss.forall(_.length == n))
+
+  /** Array to hold results. */
+  private val results = Array.ofDim[Int](n,n)
+
+  /** Worker with coordinates (i,j) and starting value x, with channels to allow
+    * data to be passed upwards and rightwards. */
+  private def worker(i: Int, j: Int, x: Int, readUp: ?[Int], writeUp: ![Int], 
+	             readRight: ?[Int], writeRight: ![Int])
+    = proc("worker"+(i,j)){
+    var myMax = x
+    // propogate values along rows
+    for(i <- 0 until n-1){
+      writeRight!myMax; myMax = myMax max readRight?()
+    }
+    // propogate values upwards
+    for(i <- 0 until n-1){
+      writeUp!myMax; myMax = myMax max readUp?()
+    }
+    // Store result
+    results(i)(j) = myMax
+  }
+
+  /** Channels by which values are passed rightwards; indexed by coords of
+    * recipients. */
+  private val right = Array.fill(n,n)(OneOneBuf[Int](1))
+
+  /** Channels by which values are passed upwards; indexed by coords of
+    * recipients. */
+  private val up = Array.fill(n,n)(OneOneBuf[Int](1))
+
+  /** Run the system, and return array storing results obtained. */
+  def apply(): Array[Array[Int]] = {
+    val workers = 
+      || (for(i <- 0 until n; j <- 0 until n) yield
+            worker(i, j, xss(i)(j), up(i)(j), up(i)((j+1)%n), right(i)(j), right((i+1)%n)(j)))
+    run(workers)
+    results
+  }
+}
+\end{scala}
+
+%%%%%
+
+%%%%%
+
+\item
+We perform the computation in two phases.  In the first phase, each worker
+obtains the maximum of the values in its row, in $\lceil \log n \rceil$
+rounds, using a variant of the prefix-sums example (this pattern works with
+any associative and commutative operator).  In the second phase, the values
+from the first phase are propagated up the columns, again using a variant of
+the prefix-sums example, so each worker obtains the overall maximum in an
+additional $\lceil \log n \rceil$ rounds.
+
+In the first phase, we use a different barrier object for each row; and in the
+second phase, we use a different barrier object for each column.  This has two
+advantages over using a single barrier: it allows different rows/columns to
+run at different speeds; each synchronisation involves fewer threads, so runs
+faster.  However, it is necessary to use different barriers for the two
+phases, or else a synchronisation may mix threads from the different phases.
+It is also necessary to have a barrier synchronisation of all the threads in
+each column before the second phase, or else the channel communications may
+mix threads on different phases.  
+
+\begin{scala}
+/** This version uses about 2 log n rounds, log n in each dimension. */
+class LogGridMax2(n: Int, xss: Array[Array[Int]]){
+  require(n >= 1 && xss.length == n && xss.forall(_.length == n))
+
+  /** Array to hold results. */
+  private val results = Array.ofDim[Int](n,n)
+
+  /** Barriers for synchronisation in the two rounds. */
+  private val rowBarriers = Array.fill(n)(new Barrier(n))
+  private val colBarriers = Array.fill(n)(new Barrier(n))
+  /* Note: we use a different barrier for each row in phase 1, and a different
+   * barrier for each column in phase 2; but we use different barriers for
+   * each phase, or else the synchronisations can go wrong, with a particular
+   * synchronisation mixing calls to sync from the two phases. */
+
+  /** Worker with coordinates (i,j) and starting value x, a single incoming
+    * channel, and channels to send to every other worker. */
+  private def worker(i: Int, j: Int, x: Int, read: ?[Int], write: List[List[![Int]]])
+    = proc("worker "+(i,j)){
+      var myMax = x // max I've seen so far
+
+      // Propagate along rows
+      var r = 0; var gap = 1 // gap = 2^r
+      // Inv: myMax = max xss(i)[j..j+gap) (looping round)
+      while(gap < n){
+        // Send to gap places left
+        write(i)((j+n-gap)%n)!myMax
+        // Receive from worker (i, (j+gap) mod n)
+        myMax = myMax max read?() 
+        // received value = max xss(i)[(j+gap) mod n .. (j+2gap) mod n)
+        r += 1; gap += gap
+        if(gap < n) rowBarriers(i).sync // Sync before next round
+      }
+      // myMax = max xss(i)
+
+      // Wait for all workers in this column to finish phase 1.
+      colBarriers(j).sync
+
+      // Propagate up columns
+      r = 0; gap = 1
+      // Inv: myMax = max xss[i..i+gap) (looping round)
+      while(gap < n){
+        // Send to gap places down
+        write((i+n-gap)%n)(j)!myMax
+        // Receive from worker ((i+gap) mod n, j)
+        myMax = myMax max read?() 
+        // received value = max xss[(i+gap) mod n .. (i+2gap) mod n)
+        r += 1; gap += gap
+        if(gap < n) colBarriers(j).sync // Sync before next round
+      }
+
+      results(i)(j) = myMax
+  }
+
+  private val chans =
+    List.fill(n,n)(N2NBuf[Int](size = 1, readers = 1, writers = n*n))
+
+  /** Run the system, and return array storing results obtained. */
+  def apply(): Array[Array[Int]] = {
+    val workers = 
+      || (for(i <- 0 until n; j <- 0 until n) yield
+            worker(i, j, xss(i)(j), chans(i)(j), chans))
+    workers(); results
+  }
+}
+\end{scala}
+
+
+%% The idea is that on round~$r$, each process holds the maximum of the initial
+%% values from a $2^r$ by $2^r$ square (wrapping round in the obvious way), with
+%% itself at the bottom-left corner.
+%% %
+%% \begin{scala}
+
+%% class LogGridMax(n: Int, xss: Array[Array[Int]]){
+%%   require(n >= 1 && xss.length == n && xss.forall(_.length == n))
+
+%%   /** Array to hold results. */
+%%   private val results = Array.ofDim[Int](n,n)
+
+%%   /** Barrier for synchronisation. */
+%%   private val barrier = new Barrier(n*n)
+
+%%   /** Worker with coordinates (i,j) and starting value x, a single incoming
+%%     * channel, and channels to send to every other worker. */
+%%   private def worker(i: Int, j: Int, x: Int,
+%%                      read: ?[Int], write: List[List[![Int]]])
+%%     = proc("worker "+(i,j)){
+%%     var myMax = x // max I've seen so far
+%%     var r = 0 // Round number 
+%%     var gap = 1 // 2^r
+%%     // Invariant: myMax is the maximum of the values of nodes
+%%     // [i..i+gap)[j..j+gap) (interpreted mod n), and gap = 2^r
+%%     while(gap < n){
+%%       // Send max to processes gap positions left and/or down of here
+%%       val i1 = (i+n-gap)%n; val j1 = (j+n-gap)%n
+%%       write(i)(j1)!myMax; write(i1)(j1)!myMax; write(i1)(j)!myMax
+%%       // Receive from three processes gap right and/or above here
+%%       for(i <- 0 until 3) myMax = myMax max read?()
+%%       // Update r, max
+%%       r += 1; gap += gap
+%%       barrier.sync // Sync before next round
+%%     }
+%%     results(i)(j) = myMax
+%%   }
+
+%%   private val chans =
+%%     List.fill(n,n)(N2NBuf[Int](size = 3, readers = 1, writers = n*n))
+
+%%   /** Run the system, and return array storing results obtained. */
+%%   def apply(): Array[Array[Int]] = {
+%%     val workers = 
+%%       || (for(i <- 0 until n; j <- 0 until n) yield worker(i, j, xss(i)(j), chans(i)(j), chans))
+%%     run(workers)
+%%     results
+%%   }
+%% }
+%% \end{scala}
+
+There are about $2 \log n$ rounds.  On each round, each step takes constant
+time except the barrier synchronisation, which takes $\Theta(n)$.  So the
+total time is $\Theta(n \log n)$.  If we replace the barrier by a logarithmic
+version, as in question~\ref{Q:barrierLog}, then each barrier synchronisation
+takes time~$\Theta(\log n)$.  So the total time is $\Theta((\log n)^2)$.
+
+Here are a few alternatives.
+%
+\begin{itemize}
+\item
+Have a single phase.  The idea is that on round~$r$, each thread holds the
+maximum of the initial values from a $2^r$ by $2^r$ square (wrapping round in
+the obvious way), with itself at the bottom-left corner.  On round~$r$, each
+thread sends its current value to the three threads $2^r$ steps left and/or
+down from it, and receives from the three threads $2^r$ steps right and/or up
+from it.  All $n^2$ threads have a barrier synchronisation at the end of each
+round.  This requires about $\log n$ rounds, on each of which each thread
+sends and receives three messages, and has a barrier synchronisation with
+$n^2$ threads.  With the logarithmic barrier, this is again $\Theta((\log
+n)^2)$, but requires 50\% more channel communications.
+
+%% An alternative is to first find the maximum in each row in about $\log n$
+%% rounds; and then to propagate the row maximums along the columns in about
+%% $\log n$ rounds.  This takes twice as many rounds as the previous version, so
+%% twice as many barrier synchronisations.  But it uses only about $2 \times \log
+%% n$ channel communications per worker, compared with $3 \times \log n$ in the
+%% previous version. 
+
+\item
+Give the worker at position $(i,j)$ an ``identity'' $n \times i + j \in [0
+  .. n^2)$.  Note that different workers have different identities.  Then form
+  the workers into a heap using these identities, and use the heap pattern
+  from lectures.  This takes time $\Theta(\log(n^2)) = \Theta(\log n)$.
+
+\item
+Use identities as in the previous version.  Then follow the pattern of the
+prefix sum example from lectures.  This takes about $\log(n^2) = 2 \log n$
+rounds, and each round takes $\Theta(\log(n^2)) = \Theta(\log n)$, because of
+the barrier synchronisation; this makes a total of $\Theta((\log n)^2)$.
+\end{itemize}
+
+
+
+%%%%%
+
+%% \item I based my testing round the following function.
+%% %
+%% \begin{scala}
+%%   /** Run a single test.
+%%     * @param useLog should the logarithmic version be used? */
+%%   def doTest(useLog: Boolean) = {
+%%     val n = 1+Random.nextInt(10)
+%%     val xss = Array.fill[Int](n, n)(Random.nextInt(1000))
+%%     val results = if(useLog) new LogGridMax(n, xss)() else new GridMax(n, xss)()
+%%     val expected = xss.map(_.max).max
+%%     assert(results.forall(_.forall(_ == expected)))
+%%   }
+%% \end{scala}
+\end{enumerate}
+\end{answer}

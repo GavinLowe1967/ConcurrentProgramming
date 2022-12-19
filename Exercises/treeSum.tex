@@ -1,0 +1,84 @@
+\begin{question}
+\Programming\
+Consider a binary tree containing integers, defined as follows:
+%
+\begin{scala}
+abstract class IntTree
+case class Leaf(n: Int) extends IntTree
+case class Branch(l: IntTree, r: IntTree) extends IntTree
+\end{scala}
+%
+Write a concurrent program to calculate the sum of the values on the leaves of
+the tree, using the recursive parallel pattern, with message passing.  Give
+you program signature
+\begin{scala}
+object TreeSum{
+  /** The sum of the leafs of t. */
+  def apply(t: IntTree): Int = ...
+}
+\end{scala}
+%
+Hint: provide each recursive thread with a channel with which to send
+its result to its parent thread.  Test your code using the testing harness on
+the course webpage.
+\end{question}
+
+%%%%%
+
+\begin{answer}
+\begin{scala}
+object TreeSum{
+  /** Add values on the tree, and send result on result. */
+  private def adder(t: IntTree, result: ![Int]) : PROC = proc{
+    t match {
+      case Leaf(n) => result!n
+      case Branch(l, r) => {
+	// Fork off parallel processes to sum each subtree
+	val res1 = OneOne[Int]; val res2 = OneOne[Int]
+	run( adder(l, res1) || adder(r, res2) || 
+	  proc{ result!(res1?())+(res2?()) } )
+      }
+    }
+  }
+
+  /** The sum of the leafs of t. */
+  def apply(t: IntTree): Int = {
+    val result = OneOne[Int]; var theResult = -1
+    run(adder(t, result) || proc{ theResult = result?() }) 
+    theResult
+  }
+}
+\end{scala}
+
+%% Here's my testing code, which generates random trees, and compares the result
+%% with a sequentially calculated result. 
+
+%% \begin{scala}
+%% object TreeSumTest{
+%%   /** Produce a random tree.
+%%     * @param w the reciprocal of the probability of producing a Leaf. */
+%%   def makeTree(w: Int): IntTree = 
+%%     if(Random.nextInt(w) == 0) Leaf(Random.nextInt(100))
+%%     else Branch(makeTree(w-1), makeTree(w-1))
+
+%%   /** Sequential tree sum. */
+%%   def treeSum(t: IntTree): Int = t match{
+%%     case Leaf(n) => n
+%%     case Branch(l, r) => treeSum(l) + treeSum(r)
+%%   }
+
+%%   /** A single test. */
+%%   def doTest = {
+%%     val t = makeTree(4); val seqSum = treeSum(t); val concSum = TreeSum(t)
+%%     assert(seqSum == concSum)
+%%   }
+
+%%   def main(args : Array[String]) = {
+%%     for(i <- 0 until 100000){
+%%       doTest; if(i%100 == 0) print(".")
+%%     }
+%%     println; exit
+%%   }
+%% }
+%% \end{scala}
+\end{answer}

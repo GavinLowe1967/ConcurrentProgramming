@@ -1,0 +1,27 @@
+\begin{question}
+The CSO construct \SCALA{alt} is rather like the external choice operator
+$\extchoice$.  Describe a couple of ways in which they are different.
+\end{question}
+
+%%%%%
+
+\begin{answer}
+\begin{itemize}
+\item
+\SCALA{alt} operates over channels, whereas $\extchoice$ operates over
+arbitrary processes.  For example, in CSP you can have a process such as
+\[
+(P \parallel Q) \extchoice (R \intchoice S)
+\]
+but you can't achieve a similar effect using \SCALA{alt}. 
+
+\item
+In CSO, if the outport of a channel is involved in an \SCALA{alt}, the inport
+may not simultaneously be involved in an(other) \SCALA{alt}.  But in CSP it's
+fine to have a process such as
+\[
+(c!x \then \ldots \extchoice \ldots) \parallel (c?x \then \ldots \extchoice
+\ldots). 
+\]
+\end{itemize}
+\end{answer}

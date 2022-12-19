@@ -1,0 +1,19 @@
+\begin{question}
+CSO channels are rather like CSP events.  Describe one or two ways in
+which they are different.
+\end{question}
+
+%%%%%
+
+\begin{answer}
+CSP processes are defined in terms of events, and so CSP does not distinguish
+between input and output (although there are constructs that behave like input
+and output); however, channels in CSO are uni-directional, and so input and
+output are distinguished.  This means that if a CSO process is willing to
+input from a channel, it should be willing to input an arbitrary value; there
+is no equivalent of the CSP selective input, e.g. $in?x:A \then \ldots$.
+
+Also, CSO communications are always synchronisations between exactly two
+processes, whereas in CSP any number of processes can synchronise on an
+event. 
+\end{answer}

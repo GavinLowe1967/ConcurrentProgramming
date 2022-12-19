@@ -1,0 +1,61 @@
+\begin{question}
+Consider an object representing a bank account, from the following class.
+%
+\begin{scala}
+class Account{
+  private var balance = 0
+
+  def credit(value: Int) = atomically{ balance += value }
+
+  def canDebit(value: Int): Boolean = atomically{ balance >= value }
+
+  def debit(value: Int) = atomically{ balance -= value }
+}
+\end{scala}
+%
+The ``|atomically|'' pseudocode is intended to indicate that each
+procedure is performed atomically (we will see how to do this in a
+later chapter).
+
+A process that wants to perform a debit should first of all call
+\SCALA{canDebit}, to avoid the account from going overdrawn; for example
+%
+\begin{scala}[showstringspaces=false]
+  if(account.canDebit(value)) account.debit(value)
+  else println("Debit not allowed!")
+\end{scala}
+
+What can go wrong if two processes execute the above code at the same
+time?  Sketch a solution to this problem.
+\end{question}
+
+%%%%%
+
+\begin{answer}
+Suppose the current balance is 100, and both processes want to debit 100;
+clearly only one should succeed.  Both processes could call
+\SCALA{canDebit(value)}, getting back the result \SCALA{true}.  They would
+then both call \SCALA{debit}, leading to the account balance becoming $-$100.
+This is a time-of-check to time-of-use (TOCTTOU) problem: the check that there
+is enough money in the account is no longer valid when the debit is
+performed. 
+
+The point is that the \SCALA{canDebit} action of one process and the
+\SCALA{debit} action of the other are not independent.  This leads to a race
+condition.
+
+The obvious way to avoid this problem is to combine the \SCALA{canDebit} and
+\SCALA{debit} actions into a single atomic action within the \SCALA{Account}
+class.  Something like
+%
+\begin{scala}
+/** Attempt to debit value.  Return true if successful. */
+def tryDebit(value: Int): Boolean = atomically{
+  if(balance >= value){ balance -= value; true } else false
+}
+\end{scala}
+% 
+The calling code (outside the |Account| class) can do the right thing with the
+boolean result. 
+\end{answer}
+

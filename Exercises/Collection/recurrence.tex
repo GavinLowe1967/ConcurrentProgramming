@@ -1,0 +1,155 @@
+\begin{question}
+\def\A{\mbox{\SCALA{a}}} 
+The aim of this question is to write concurrent
+programs, using CSO, to update the $N$-by-$N$ array~\A\
+%
+%% \begin{scala}
+%%   val A = new Array[Array[Int]](N,N);
+%% \end{scala}
+%
+to hold values defined as follows:
+%
+\[
+\begin{array}{rcll}
+\A(0)(j) & = & j, & \mbox{for $0 \le j < N$,} \\
+\A(i)(0) & = & \A(i-1)(0), & \mbox{for $1 \le i < N$,} \\
+\A(i)(j) & = & f( \A(i-1)(j-1) ,\, \A(i-1)(j) ), &  
+  \mbox{for $1 \le i < N$,\, $1 \le j < N$,}
+\end{array}
+\]
+where $f$ is some given function. 
+
+Note that you will need to ensure that your programs calculate the entries
+of~\A\ in a suitable order.  
+%
+\begin{parts}
+\part
+Write a concurrent program that uses $N$ workers to solve this problem.  The
+$j$th worker should be responsible for calculating $\A(i)(j)$ for $0 \le i <
+N$.  Explain your design.  \marks{10}
+
+\part
+Write a concurrent program that uses $p$ worker processes, where $p<N$, to
+solve this problem.  Your program should use the bag-of-tasks pattern, where
+each task should involve calculating a \emph{single} entry in~\A.  Explain
+your design.  \marks{15}
+\end{parts}
+% 
+As always, you should aim to make your programs reasonably efficient.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\answer
+% \begin{ansnote}
+The difficulty is in ensuring that processes calculate values in a suitable
+order.
+%\end{ansnote}
+
+\begin{parts}
+\part
+The solution below arranges for each worker $j$, for $j < N-1$, to signal on
+the channel \SCALA{flag(j+1)} to worker $j+1$ after writing each value; the
+$i$th such signal (counting from~0) indicates that $a(i)(j)$ has been written.
+Worker~$j+1$ will calculate the next value only after receiving this signal.
+We use buffered channels for efficiency. 
+%
+\begin{scala}
+object Recurrence1{
+  val N = 10
+  val a = new Array[Array[Int]](N,N)
+
+  val flag = Array.fill(N)(OneOneBuf[Unit](1))  // indexed by recipients 
+
+  def f(m:Int, n:Int) = m+n  // for testing
+
+  def worker(j:Int) = proc("Worker"+j){
+    a(0)(j) = j
+    for(i <- 1 until N){
+      if(j < N-1) flag(j+1)!() // signal to j+1
+      if(j > 0){
+        flag(j)?() // wait for signal
+        a(i)(j) = f(a(i-1)(j-1) , a(i-1)(j))
+      } 
+      else a(i)(j) = a(i-1)(j) // j = 0 doesn't need to wait
+    }
+  }
+
+  def main(args: Array[String]) = { 
+    run(|| (for(j <- 0 until N) yield worker(j)))
+    for(j <- 0 until N) println(a(N-1)(j)) 
+  }
+}
+\end{scala}
+
+%%%%%
+
+\part
+
+In order to ensure that values are calculated in a suitable order, the
+controller has an array of booleans indicating which values have been
+calculated; tasks are added to its queue when the necessary prior tasks have
+been completed.
+%
+\begin{scala}
+object Recurrence2{
+  val N = 10
+  val a = new Array[Array[Int]](N,N)
+
+  type Task = (Int,Int)
+  // the task (i,j) tells the worker to calculate a(i)(j)
+
+  val toWorkers = OneMany[Task] // channel for distributing tasks
+  val done = ManyOne[Task] // channel to tell controller that task is done
+  def f(m:Int, n:Int) = m+n // for testing
+
+  def worker = proc{
+    repeat{
+      val(i,j) = toWorkers?()
+      if(i == 0) a(i)(j) = j
+      else if (j > 0) a(i)(j) = f(a(i-1)(j-1) , a(i-1)(j))
+      else a(i)(j) = a(i-1)(j)
+      done!(i,j)
+    }
+  }
+
+  def controller = proc{
+    val b = Array.fill[Boolean](N,N) // indicates which values are done; initialised to all false
+    // queue stores the tasks that are ready to be done
+    val queue = new scala.collection.mutable.Queue[Task]
+    for(j <- 0 until N) queue += (0,j)
+    var busyWorkers = 0 // number of busy workers
+
+    // Main loop
+    serve(
+      (queue.nonEmpty && toWorkers) =!=> { busyWorkers += 1; queue.dequeue }
+      | 
+      (busyWorkers > 0 && done) =?=> { case (i,j) =>
+        b(i)(j) = true; busyWorkers -= 1
+        // add tasks to queue if possible
+        if(i < N-1){
+          if(j == 0 || b(i)(j-1)) 
+            // (i,j-1) and (i,j) done, so can do task (i+1,j)
+            queue += (i+1,j) 
+          if(j < N-1 && b(i)(j+1))
+            // (i,j) and (i,j+1) done so can do task (i+1,j+1)
+            queue += (i+1,j+1) 
+        }
+      }
+    )
+    // Loop terminates when queue.isEmpty && busyWorkers = 0
+
+    toWorkers.close
+  }
+
+  def main(args: Array[String]) = { 
+    val p = 4 // number of workers
+    val workers = || (for(j <- 0 until p) yield worker)
+    run(workers || controller)
+    for(j <- 0 until N) println(a(N-1)(j))
+  }
+}
+\end{scala}
+\end{parts}
+\end{question}
+ 

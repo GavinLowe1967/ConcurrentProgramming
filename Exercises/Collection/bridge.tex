@@ -1,0 +1,294 @@
+\begin{question}
+Consider a single-lane road bridge, crossing a river from north to south.
+Cars going in the same direction can cross the bridge simultaneously, but cars
+going in different directions may not.  The aim of this question is to
+implement classes, using CSO, to control the bridge, with the following
+signature:
+%
+\begin{scala}
+  class Bridge{
+    /** Car arrives at north end. */
+    def arriveNorth = {...}
+    /** Car leaves at south end. */
+    def leaveSouth = {...}
+    /** Car arrives at south end. */
+    def arriveSouth = {...}
+    /** Car leaves at north end. */
+    def leaveNorth = {...}
+  }
+\end{scala}
+%
+A car arriving at the north end of the bridge calls \SCALA{arriveNorth}; this
+call should block until the car may enter the bridge.  When the car leaves the
+south end of the bridge it calls \SCALA{leaveSouth}.  Cars travelling from
+south to north call \SCALA{arriveSouth} and \SCALA{leaveNorth}, similarly.
+
+The code should enforce both the safety condition that cars are never
+simultaneously crossing the bridge in different directions, and also the
+liveness condition that each car that calls one of the \SCALA{arrive}
+procedures may eventually cross the bridge.  Hint: one way to achieve the
+liveness condition is to not allow a car that arrives at the bridge to
+immediately enter it if there is a car waiting at the other side.
+
+You may find that your code for cars travelling from south to north
+is very similar to the code for cars travelling from north to south.  If so,
+you should give the code for one direction in full, but may omit the code for
+the other direction.
+
+The physical characteristics of the bridge will prevent one car from
+overtaking another while on the bridge.  Your code does \emph{not} need to
+enforce this. 
+
+\begin{parts}
+\part
+Implement the \SCALA{Bridge} class by encapsulating a server process.
+\marks{9}
+
+\part
+Now implement the \SCALA{Bridge} class as a monitor.
+\marks{8}
+
+\part
+Finally implement the \SCALA{Bridge} class using semaphores.
+\marks{8}
+\end{parts}
+%
+Note that in each part you should use \emph{only} the concurrency primitive
+mentioned.  You should explain your designs. 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\answer
+
+Note: students are expected to elide about 45\% of the code below.
+
+\begin{parts}
+\part
+Each call to an \SCALA{Arrive} procedure causes a reply channel to be sent to
+the server.  The server sends a reply on this channel when the car should
+proceed.
+%
+\begin{scala}
+class BridgeServer{
+  private type ReplyChan = OneOne[Unit]
+  // channels to server
+  private val arriveNorth,  arriveSouth = ManyOne[ReplyChan]
+  private val leaveSouth, leaveNorth = ManyOne[Unit]
+
+  def arriveNorth = {
+    val c = OneOne[Unit]
+    arriveNorth!c // register with server
+    c?() // wait for acknowledgement to proceed
+  }
+
+  def leaveSouth = {
+    leaveSouth!() // tell server we're done
+  }
+
+  def arriveSouth = {
+    val c = OneOne[Unit]
+    arriveSouth!c // register with server
+    c?() // wait for acknowledgement to proceed
+  }
+
+  def leaveNorth = {
+    leaveNorth!() // tell server we're done
+  }
+
+  private def server = proc{
+    // Queues of ReplyChans for waiting cars
+    val northQueue = new scala.collection.mutable.Queue[ReplyChan]
+    val southQueue = new scala.collection.mutable.Queue[ReplyChan]
+    var fromNorth = 0; var fromSouth = 0 // number on bridge
+    // Invariant: fromNorth=0 or fromSouth=0
+
+    serve(
+      arriveNorth =?=> { c =>
+        if(fromSouth > 0 || southQueue.nonEmpty) // need to wait
+          northQueue += c
+        else{ fromNorth += 1; c!() } // can go
+      }
+      | 
+      arriveSouth =?=> { c =>
+        if(fromNorth > 0 || northQueue.nonEmpty) // need to wait
+          southQueue += c
+        else{ fromSouth += 1; c!() } // can go
+      }
+      |
+      leaveSouth =?=> { () => 
+        fromNorth -= 1
+        if(fromNorth == 0) // release cars queuing from south
+          while(southQueue.nonEmpty){ southQueue.dequeue!(); fromSouth += 1 }
+      }
+      |
+      leaveNorth =?=> { () =>
+        fromSouth -= 1
+        if(fromSouth == 0) // release cars queuing from south
+          while(northQueue.nonEmpty){ northQueue.dequeue!(); fromNorth += 1 }
+      }
+    ) // end of serve
+  }
+
+  server.fork // fork off server process
+}
+\end{scala}
+
+%%%%%
+
+\part
+Here's a version using a JVM monitor.
+%
+\begin{scala}
+class BridgeMonitor{
+  private val mon = new Monitor
+  // Conditions for signalling that the route from south, resp. north, is clear.
+  private val southClear, northClear = mon.newCondition
+  
+  private var fromNorth = 0; private var fromSouth = 0 // number on bridge
+  private var waitingNorth = 0; private var waitingSouth = 0// numbers waiting
+
+  def arriveNorth = monitor.withLock{
+    if(fromSouth > 0 || waitingSouth > 0){ // need to wait
+      waitingNorth+=1
+      northClear.await
+      assert(fromSouth == 0)
+      waitingNorth-=1
+    }
+    // proceed
+    fromNorth += 1
+  }  
+
+  def arriveSouth = monitor.withLock{
+    if(fromNorth > 0 || waitingNorth > 0){ // need to wait
+      waitingSouth+=1
+      southClear.await
+      assert(fromNorth == 0)
+      waitingSouth-=1
+    }
+    // proceed
+    fromSorth += 1
+  }
+
+  def leaveSouth = monitor.withLock{
+    fromNorth -= 1
+    if(fromNorth == 0 && waitingSouth > 0) southClear.signalAll()
+  }
+
+  def leaveNorth = monitor.withLock{
+    fromSouth -= 1
+    if(fromSouth == 0 && waitingNorth > 0) northClear.signalAll()
+  }
+}
+\end{scala}
+%
+Note that once a waiting car~$c$ receives a signal, no car will enter from the
+other direction until (at least) $c$ has left the bridge. 
+
+
+%% \begin{scala}
+%% class BridgeMonitor{
+
+%%   private var fromNorth = 0; private var fromSouth = 0; // number on bridge
+%%   private var waitingNorth = 0; private var waitingSouth = 0;// numbers waiting
+%%   private val NORTH = 0; private val SOUTH = 1; private val ANY = -1;
+%%   private var direction = ANY; // current direction of flow
+
+%%   def ArriveNorth = synchronized{
+%%     if(direction==NORTH || waitingSouth>0){ // need to wait
+%%       waitingNorth+=1; 
+%%       wait; while(direction==NORTH) wait;
+%%       waitingNorth-=1;
+%%     }
+%%     // proceed
+%%     fromNorth+=1; direction = SOUTH;
+%%   }
+
+%%   def ArriveSouth = synchronized{
+%%     if(direction==SOUTH || waitingNorth>0){ // need to wait
+%%       waitingSouth+=1; 
+%%       wait; while(direction==SOUTH) wait;
+%%       waitingSouth-=1;
+%%     }
+%%     // proceed
+%%     fromSouth+=1; direction = NORTH;
+%%   }
+
+%%   def LeaveSouth = synchronized{
+%%     fromNorth-=1;
+%%     if(fromNorth==0){
+%%       if(waitingSouth>0){  // wake up waiting processes
+%%         direction = NORTH; notifyAll; 
+%%       }
+%%       else direction = ANY;
+%%     }
+%%   }
+
+%%   def LeaveNorth = synchronized{
+%%     fromSouth-=1;
+%%     if(fromSouth==0){
+%%       if(waitingNorth>0){  // wake up waiting processes
+%%         direction = SOUTH; notifyAll; 
+%%       }
+%%       else direction = ANY;
+%%     }
+%%   }
+%% }
+%% \end{scala}
+
+%% Note: the code needs to be careful to avoid waking up cars going in the wrong
+%% direction.  
+
+%%%%%
+
+\part
+\begin{scala}
+class BridgeSemaphore{
+
+  private var fromNorth = 0; private var fromSouth = 0 // number on bridge
+  private var waitingNorth = 0; private var waitingSouth = 0// numbers waiting
+  private val mutex = MutexSemaphore() // for mutual exclusion
+  // Semaphores to signal to cars waiting at each end
+  private val north = SignallingSemaphore()
+  private val south = SignallingSemaphore()
+
+  def arriveNorth = {
+    mutex.down
+    if(fromSouth > 0 || waitingSouth > 0){ // need to wait
+      waitingNorth += 1; mutex.up; north.down // wait for signal
+      waitingNorth -= 1
+    }
+    fromNorth+=1
+    signalNorth // maybe signal to next car at this end
+  }
+
+  // Signal to cars waiting in the north, if any
+  private def signalNorth = if(waitingNorth > 0) north.up else mutex.up
+
+  def arriveSouth = {
+    mutex.down
+    if(fromNorth > 0 || waitingNorth > 0){ // need to wait
+      waitingSouth += 1; mutex.up; south.down // wait for signal
+      waitingSouth -= 1
+    }
+    fromSouth+=1
+    signalSouth
+  }
+
+  // Signal to cars waiting in the south, if any
+  private def signalSouth = if(waitingSouth > 0) south.up else mutex.up
+
+  def leaveSouth = {
+    mutex.down
+    fromNorth -= 1
+    if(fromNorth == 0) signalSouth else mutex.up
+  }
+
+  def leaveNorth = {
+    mutex.down
+    fromSouth -= 1
+    if(fromSouth == 0) signalNorth else mutex.up
+  }
+}
+\end{scala}
+\end{parts}
+\end{question}

@@ -1,0 +1,37 @@
+\begin{question}
+% \Programming\ 
+Extend the ``slot'' example from the lectures on monitors so as
+to hold a queue of data.  The length of the queue should be bounded by some
+value $N$.
+\end{question}
+
+%%%%%
+
+\begin{answer}
+The adaptation is fairly straightforward.  The producer has to wait when the
+queue has length $N$; the consumer has to wait when the queue is empty.
+%
+\begin{scala}
+class Buffer[T](N:Int){
+  private val queue = new scala.collection.mutable.Queue[T];
+
+  def put(v:T) = synchronized{
+    while(queue.length==N) wait();
+    queue.enqueue(v); 
+    notify();
+  }
+
+  def get : T = synchronized{
+    while(queue.isEmpty) wait();
+    val result = queue.dequeue;
+    notify();
+    return result;
+  }
+}
+\end{scala}
+%
+%% [Students should include some testing code that causes the producer to be
+%%   blocked sometimes; for example, the producer could produce data at a faster
+%%   rate than the consumer consumes it.]
+\end{answer}
+

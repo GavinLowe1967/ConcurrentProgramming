@@ -1,0 +1,155 @@
+\begin{question}
+Suppose we represent a graphical image by a value of type \SCALA{Image} where 
+\begin{scala}
+  type Row = Array[Boolean]
+  type Image = Array[Row]
+\end{scala}
+Each \SCALA{Boolean}-valued entry indicates whether the corresponding pixel is
+set.
+
+\emph{Smoothing} is an operation that is sometimes applied as part of image
+processing, to remove small irregularities.  The operation proceeds in rounds.
+In each round, each pixel becomes set if the majority of it and its neighbours
+are set (where each pixel has up to eight neighbours); otherwise it becomes
+unset.  This is repeated until no more changes occur, or some limit on the
+number of rounds is reached (the latter condition is necessary, because there
+are some images that never converge).  Within each round, each pixel is
+treated independently.
+
+Give a concurrent implementation of smoothing that uses shared variables.
+Give your implementation the signature
+\begin{scala}
+/** Smooth image a, using p workers, with at most maxIters iterations. */
+class SmoothShared(a: Array[Array[Boolean]], p: Int, maxIters: Int){
+  def apply() = ...
+}
+\end{scala}
+If you like, you may assume that the number of rows is a multiple of the
+number of worker threads that you use.  Test your code using the test harness
+on the course webpage.
+\end{question}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{answer}
+My code is below.  Each worker deals with a strip of \SCALA{height = N/p}
+rows.  This version uses two arrays: on each round, the workers cooperate to
+do a round of smoothing on one array, writing the results into the second
+array; the roles of the arrays swap between rounds.  A barrier synchronisation
+is used at the end of each round to coordinate, and also to decide whether
+they can terminate, i.e.~if no changes happened on this round.  The code below
+uses the function |Smooth.majority|, which was provided to students in the
+testing code.
+%
+\begin{scala}
+class SmoothShared2(a: Array[Array[Boolean]], p: Int, maxIters: Int){
+  private val n = a.length; private val w = a(0).length // height and width
+  assert(a.forall(_.length == w))
+  assert(n%p == 0); private val height = n/p // height of each strip
+
+  // The two arrays.  We set a1 to be the original a. 
+  private val a1 = a; private val a2 = Array.ofDim[Boolean](n,w)
+
+  /** Barrier used at the end of each round, and also to decide termination. */
+  private val combBarrier = new lock.AndBarrier(p)
+
+  /** Worker process. */
+  private def worker(me: Int) = proc("worker"+me){
+    val start = me*height; val end = (me+1)*height
+    // This worker is responsible for rows [start..height)
+    var oldA = a1; var newA = a2  // Old and new versions of the image
+    var done = false; var iters = 0
+
+    while(!done && iters < maxIters){
+      var myDone = true // have no values changed yet?
+      for(i <- start until end; j <- 0 until w){
+	newA(i)(j) = Smooth.majority(oldA, i, j)
+	myDone &&= (newA(i)(j) == oldA(i)(j))
+      }
+      iters += 1; done = combBarrier.sync(myDone) // Synchronise with others
+      if(!done && iters < maxIters){ val t = oldA; oldA = newA; newA = t }
+    }
+
+    // Copy newA into a, if not already equal. 
+    if(newA != a) for(i <- start until end) a(i) = newA(i)
+  }
+
+  /** Smooth the image. */
+  def apply() = run( || (for (i <- 0 until p) yield worker(i)) )
+}
+\end{scala}
+
+
+\end{answer}
+
+%%  Two barrier
+%% synchronisations are used in each round; before the first, all processes may
+%% read the shared variables; between the first and second synchronisations, each
+%% process may write to its share of the shared variable.  The second barrier
+%% synchronisation is also used to decide whether they can terminate, i.e.~if no
+%% changes happened on this round.  It's important to avoid reference sharing; I
+%% do this by each worker creating new arrays for its rows on each iteration.
+%% %
+%% \begin{scala}
+%% /** Smooth image a, using p workers, with at most maxIters iterations. */
+%% class SmoothShared(a: Array[Array[Boolean]], p: Int, maxIters: Int){
+%%   private val n = a.length
+%%   private val w = a(0).length; assert(a.forall(_.length == w))
+%%   assert(n%p == 0); private val height = n/p // height of each strip
+
+%%   /** Barrier used at the end of each reading stage. */
+%%   private val barrier = new Barrier(p)
+
+%%   /** Barrier uses at the end of each writing state, and to decide termination. */
+%%   private val combBarrier = new lock.AndBarrier(p)
+   
+%%   /** Test if majority of neightbours of a(i)(j) are set. */
+%%   def majority(i: Int, j: Int): Boolean = {
+%%     var sum = 0 // # set neighbours so far
+%%     var count = 0 // # neighbours so far
+%%     for(i1 <- i-1 to i+1; if i1 >= 0 && i1 < n;
+%%         j1 <- j-1 to j+1; if j1 >= 0 && j1 < w){
+%%       count += 1; if(a(i1)(j1)) sum += 1
+%%     }
+%%     2*sum >= count
+%%   }
+
+%%   /** Worker process. */
+%%   private def worker(me: Int) = proc("worker"+me){
+%%     val start = me*height; val end = (me+1)*height
+%%     // This worker is responsible for rows [start..height)
+%%     var done = false; var iters = 0
+
+%%     while(!done && iters < maxIters){
+%%       // This thread will calculate next smoothed values in newA.  newA(i) will
+%%       // hold the new value for myA(start+i).
+%%       val newA = Array.ofDim[Boolean](height, w)
+%%       var myDone = true // have no values changed yet?
+%%       for(i <- start until end; j <- 0 until w){
+%% 	newA(i-start)(j) = majority(i, j)
+%% 	myDone &&= (newA(i-start)(j) == a(i)(j))
+%%       }
+%%       barrier.sync
+
+%%       // Copy into a
+%%       for(i <- start until end) a(i) = newA(i-start)
+%%       // Synchronise with other workers
+%%       done = combBarrier.sync(myDone) 
+%%       iters += 1
+%%     }
+%%   }
+
+%%   /** Smooth the image. */
+%%   def apply() = run( || (for (i <- 0 until p) yield worker(i)) )
+%% }
+%% \end{scala}
+
+%% Alternatively, we could use two arrays, one for reading and one for writing,
+%% with the roles swapping at the end of each round.  This means only one barrier
+%% synchronisation is necessary. 
+
+
+%% %% Testing is best done by generating random images, and comparing the result
+%% %% against the results for a sequential algorithm (on a clone of the image).
+%% \end{answer}
+

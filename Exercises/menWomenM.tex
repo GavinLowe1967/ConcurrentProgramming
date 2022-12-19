@@ -1,0 +1,374 @@
+\begin{question}\label{Q:menWomenM}
+\Programming\ 
+Recall the following synchronisation problem from an earlier sheet.  There are
+two types of client process, which we shall call \emph{men} and \emph{women}.
+These processes need to pair off for some purpose, with each pair containing
+one process of each type.  Design a monitor to support this, with public
+methods
+\begin{scala}
+  def manSync(me: String): String = ...
+  def womanSync(me: String): String = ...
+\end{scala}
+Each process should pass its name to the monitor, and receive back the name of
+its partner.
+
+Test your code.
+\end{question}
+
+%%%%%
+
+\begin{answer}
+My code is below.  (I've arranged for it to have the same signature as
+for the similar question on an earlier sheet, to allow the testing
+code to be re-used.)
+
+%%% I think the first solution is less clear than the second.
+
+% Each man or woman tries to write his/her name to a monitor variable |oMan| or
+% |oWoman|.  He/she will then be the next man or woman to be paried.  We use
+% |Option| variables here, to have a convenient way to indicate no current
+% name.  Access to these variables is controlled by the conditions |manProceed|
+% and |womanProceed|.
+
+% Whoever is first out of a (prospective) couple will wait.  The second will
+% signal to the first (on |manFinished| or |womanFinished|).  The first will
+% then clear the two names, and signal to the next couple. 
+
+% A typical execution of a couple (ignoring the initial waiting) will be either
+% as follows, or with the genders reversed:
+% \begin{enumerate}
+% \item man writes his name, waits for a signal
+% \item woman writes her name, signals to man, finishes
+% \item man clears names and signals to next man and woman, finishes.
+% \end{enumerate}
+
+
+
+% \begin{scala}
+% /** A solution using a monitor. */
+% class MenWomenMonitor extends MenWomen{
+%   /** Optionally the man currently waiting. */
+%   private var oMan: Option[String] = None
+
+%   /** Optionally the woman currently waiting. */
+%   private var oWoman: Option[String] = None
+
+%   /** Monitor to control the synchronization. */
+%   private val monitor = new Monitor
+
+%   /** Condition on which a man waits before writing to oMan. */
+%   private val manProceed = monitor.newCondition
+
+%   /** Condition on which a woman waits before writing to oWoman. */
+%   private val womanProceed = monitor.newCondition
+
+%   /** Condition on which a man waits for a woman.  A signal indicates oWoman has
+%     * been written. */
+%   private val manFinish = monitor.newCondition
+
+%   /** Condition on which a woman waits for a man.  A signal indicates oMan has
+%     * been written. */
+%   private val womanFinish = monitor.newCondition
+
+%   /** Clear both names, and signal to next man and woman that they can write
+%     * their names. */
+%   private def clearNames() = {
+%     oMan = None; manProceed.signal
+%     oWoman = None; womanProceed.signal
+%   }
+
+%   /** A man tries to find a partner. */
+%   def manSync(me: String): String = monitor.withLock{
+%     // Wait to write my name
+%     manProceed.await(oMan.isEmpty); oMan = Some(me)
+%     if(oWoman.nonEmpty){
+%       womanFinish.signal() // signal to her
+%       oWoman.get // get her name
+%     }
+%     else{
+%       manFinish.await // wait for a signal from a woman
+%       assert(oWoman.nonEmpty)
+%       val her = oWoman.get // record her name
+%       clearNames() // clear names and signal to next man, woman
+%       her
+%     }
+%   }
+
+%   /** A woman tries to find a partner. */
+%   def womanSync(me: String): String = monitor.withLock{
+%     // Wait to write my name
+%     womanProceed.await(oWoman.isEmpty); oWoman = Some(me)
+%     if(oMan.nonEmpty){
+%       manFinish.signal() // signal to him
+%       oMan.get // get his name
+%     }
+%     else{
+%       womanFinish.await // wait for a signal from a man
+%       assert(oMan.nonEmpty)
+%       val him = oMan.get // record his name
+%       clearNames() // clear names and signal to next man, woman
+%       him
+%     }
+%   }
+% }
+% \end{scala}
+
+%%%%%
+
+This solution is asymmetric.  It uses a single variable to
+hold the current status of the protocol, and three conditions, to signal
+between different participants.  A typical execution of a couple will be:
+\begin{itemize}
+\item man waits for slot to become empty, writes his name, signals to woman,
+(on |manWaiting|), and waits;
+
+\item woman waits for signal, reads man's name, writes her name, signals to
+man (on |womanDone|), and finishes;
+
+\item man reads woman's name, clears name, signals to next man (on
+|slotEmpty|), and finishes.
+\end{itemize}
+%
+\begin{scala}
+/** Another solution using a monitor. */
+class MenWomenMonitor2 extends MenWomen{
+  /** Information about who is currently waiting. */
+  private abstract class Status
+
+  /** The man "him" is currently waiting. */
+  private case class ManWaiting(him: String) extends Status
+
+  /** The woman "her" has just paired with the current man. */
+  private case class WomanDone(her: String) extends Status
+
+  /** Nobody is currently waiting. */
+  private case object Nobody extends Status
+
+  /** A slot which holds information about the current status of the exchange. */
+  private var slot: Status = Nobody
+
+  /** Monitor to control the synchronization. */
+  private val monitor = new Monitor
+
+  /** Condition to signal that the slot has been cleared, ready for the next
+    * couple. */
+  private val slotEmpty = monitor.newCondition
+
+  /** Condition to signal that a man's name is in the slot, and he is waiting
+    * for a woman. */
+  private val manWaiting = monitor.newCondition
+
+  /** Condition to signal that a woman has written her name, and is paired with
+    * the waiting man. */
+  private val womanDone = monitor.newCondition
+
+  /** A man tries to find a partner. */
+  def manSync(me: String): String = monitor.withLock{
+    // Wait to write my name
+    slotEmpty.await(slot == Nobody)          // wait for signal (1)
+    slot = ManWaiting(me); manWaiting.signal  // signal to woman waiting at (2)
+    womanDone.await                          // wait for woman (3)
+    val WomanDone(her) = slot
+    slot = Nobody; slotEmpty.signal         // signal to man waiting at (1)
+    her
+  }
+
+  /** A woman tries to find a partner. */
+  def womanSync(me: String): String = monitor.withLock{
+    manWaiting.await(slot.isInstanceOf[ManWaiting]) // wait for signal (2)
+    val ManWaiting(him) = slot
+    slot = WomanDone(me); womanDone.signal   // signal to man waiting at (3)
+    him
+  }
+}
+\end{scala}
+
+There are other solutions.  My impression is that symmetric solutions are
+less clear.
+
+As hinted above, testing can be done precisely as on the earlier sheet.
+\end{answer}
+
+
+
+% There are two types of
+% process, which we shall call Men and Women.  These processes need to pair off
+% for some purpose, with each pair containing one process of each type.  A
+% monitor is required, with a procedure for each type of process.  The procedure
+% should block processes until a process of the other type is ready, at which
+% point both should continue.
+% %
+% \begin{enumerate}
+% \item
+% The following monitor was suggested.  Explain why this does not meet the
+% requirement. 
+% %
+% \begin{scala}
+% object Monitor1{
+%   var menWaiting = 0; var womenWaiting = 0; 
+%     // number of men, women currently waiting
+%   var manCommitted, womanCommitted = false;
+%     // Have the next man, woman to return been decided 
+%     // but not yet paired?
+
+%   def ManEnter = synchronized{
+%     if(womenWaiting==0 && !womanCommitted){
+%       menWaiting += 1;
+%       while(womenWaiting==0 && !womanCommitted) 
+%         wait(); // wait for a woman
+%       menWaiting -= 1; womanCommitted = false;
+%     }
+%     else{ 
+%       manCommitted = true; notify();  // wake up a man
+%     }
+%   }
+
+%   def WomanEnter = synchronized{
+%      if(menWaiting==0 && !manCommitted){
+%         womenWaiting += 1;
+%         while(menWaiting==0 && !manCommitted) 
+%           wait(); // wait for a man
+%         womenWaiting -= 1; manCommitted = false;
+%      }
+%      else{ 
+%        womanCommitted = true; notify(); // wake up a woman
+%      }
+%   }
+% }
+% \end{scala}
+
+% \item
+% Now the following monitor is suggested.  Explain why this doesn't meet the
+% requirement, either.
+% %
+% \begin{scala}
+% object Monitor2{
+%   var menWaiting = 0; var womenWaiting = 0; 
+%     // number of men, women currently waiting
+%   var manCommitted, womanCommitted = false;
+%     // Have the next man, woman to return been decided 
+%     // but not yet paired?
+
+%   def ManEnter = synchronized{
+%     if(womenWaiting==0 && !womanCommitted || manCommitted){
+%       menWaiting += 1;
+%       while(womenWaiting==0 && !womanCommitted 
+%             || manCommitted) 
+%         wait(); // wait for a woman
+%       menWaiting -= 1; womanCommitted = false;
+%     }
+%     else{ 
+%       manCommitted = true; notifyAll();  // wake up a man
+%     }
+%   }
+
+%   def WomanEnter = synchronized{
+%     if(menWaiting==0 && !manCommitted || womanCommitted){
+%       womenWaiting += 1;
+%       while(menWaiting==0 && !manCommitted
+%             || womanCommitted)
+%         wait(); // wait for a man
+%       womenWaiting -= 1; manCommitted = false;
+%     }
+%     else{ 
+%       womanCommitted = true; notifyAll(); // wake up a woman
+%     }
+%   }
+% }
+% \end{scala}
+
+% \item
+% Suggest a definition for the module that does meet the requirement.
+% \end{enumerate}
+% \end{question}
+
+% %%%%%%%%%%
+
+% \begin{answer}
+% \begin{enumerate}
+% \item
+% Consider the following execution.
+% %
+% \begin{enumerate}
+% \item A man enters and waits (so \SCALA{menWaiting = 1}).
+
+% \item
+% A woman enters, finds \SCALA{menWaiting>0}, so sets \SCALA{womanCommitted =
+%   true}, does \SCALA{notify()} and exits.
+
+% \item
+% A second woman enters, before the waiting man is scheduled, finds
+% \SCALA{menWaiting>0}, so sets \SCALA{womanCommitted = true}, does
+% \SCALA{notify()} and exits.
+
+% \item
+% Eventually the man is scheduled and exits.
+% \end{enumerate}
+% %
+% So the poor man ends up with two women.  The point is that the second woman
+% has no way of knowing that another woman has already paired off with the man. 
+
+% %%%%%
+
+% \item
+% Consider the following execution.
+% %
+% \begin{enumerate}
+% \item
+% Men 1 and 2 enter and wait (so \SCALA{menWaiting = 2}).
+
+% \item
+% Woman 3 enters, finds \SCALA{menWaiting>0}, so sets \SCALA{womanCommitted =
+%   true}, does \SCALA{notifyAll()} and exits.
+
+% \item
+% Woman 4 enters (before any man is scheduled), and waits (since
+% \SCALA{womanCommitted = true}), setting \SCALA{womenWaiting = 1}.
+
+% \item
+% Man 1 is scheduled, sets \SCALA{womanCommitted = false}, \SCALA{menWaiting =
+%   1}, and exits (paired with woman 3).
+
+% \item
+% Man 2 is scheduled, finds \SCALA{womenWaiting = 1} and so exits.
+% \end{enumerate}
+% %
+% So poor woman 3 ends up with two men.  The point is that man 2 should wake up
+% woman 4. 
+
+% %%%%%
+
+% \item
+% I think the following version works.  Each process tests (in the final
+% \SCALA{if} statement) whether it is the first or second of the pair to be
+% woken. 
+% %
+% \begin{scala}
+% object Monitor3{
+%   var menWaiting = 0; var womenWaiting = 0; 
+%     // number of men, women currently waiting
+%   var manCommitted, womanCommitted = false;
+%     // Have the next man, woman to return been decided 
+%     // but not yet paired?
+
+%   def ManEnter = synchronized{
+%     menWaiting += 1;
+%     while(womenWaiting==0 && !womanCommitted || manCommitted) 
+%       wait(); // wait for a woman
+%     menWaiting -= 1; manCommitted = true; 
+%     if(!womanCommitted) notifyAll() 
+%     else{ manCommitted = false; womanCommitted = false; }
+%   }
+
+%   def WomanEnter = synchronized{
+%     womenWaiting += 1;
+%     while(menWaiting==0 && !manCommitted || womanCommitted) 
+%       wait(); // wait for a woman
+%     womenWaiting -= 1; womanCommitted = true; 
+%     if(!manCommitted) notifyAll() 
+%     else{ manCommitted = false; womanCommitted = false; }
+%   }
+% }
+% \end{scala}
+% \end{enumerate}
+% \end{answer}

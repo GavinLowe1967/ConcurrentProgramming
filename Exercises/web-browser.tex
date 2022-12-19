@@ -1,0 +1,40 @@
+\begin{nontutequestion}
+Consider a web browser that supports multiple tabs (i.e.~different
+tabs for different web pages).  Why might it be beneficial to use
+concurrency in the implementation of such a web browser?  Would this
+still make sense on a uni-processor computer?  What problems might
+arise from such a design?
+\end{nontutequestion}
+
+%%%%%
+
+\begin{nontuteanswer}
+There are two main reasons: ease of implementation, and efficiency.
+
+Building a web browser this way is easier!  The different tabs are largely
+independent.  It's far easier to write a thread that deals with a single tab,
+and run $n$ such threads, than to write a single thread that deals with all
+$n$ tabs.  Each tab thread will probably need to interact with some main
+browser thread, but that's relatively straightforward.
+
+In terms of efficiency, concurrency might be used to give better response to
+user actions (i.e.\ lower latency), and better overall performance (i.e.\
+higher throughput); of these, the former seems more important.
+
+As an example of why a sequential implementation might be unsatisfactory,
+consider a user who has two tabs open, one viewing a page that automatically
+re-loads every few minutes, and another that the user is actively reading.
+Suppose the user tries to scroll down in the second page just after the first
+page starts a re-load; then the user has to wait until the re-load completes
+before the second page scrolls; this could take several seconds, and so annoy
+the user.  (The Firefox browser used to act in this way.)  If the different
+tabs used different processes, then they could run concurrently so the user
+wouldn't see this delay.  This would still be the case on a uni-processor
+machine: the fact that the two processes are competing for the processor would
+slow things down a bit, but probably not enough for the user to notice.
+
+The problem is, of course, that two processes might try to access some shared
+data (e.g.~the history list) simultaneously, leading to race conditions.
+These race conditions can be avoided by careful programming: see the rest of
+the course!
+\end{nontuteanswer}

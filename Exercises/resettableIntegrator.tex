@@ -1,0 +1,84 @@
+\begin{nontutequestion}
+\Programming\
+Recall the integrator network from the previous sheet.  Adapt the network so
+that it has an additional input channel 
+\SCALA{reset : ?[Unit]}, such that when it receives a signal on
+\SCALA{reset}, the current sum gets reset to 0.  Explain your design.  {\bf
+  Hint:} you only need to change one component of the network.
+\end{nontutequestion}
+
+%%%%%
+
+\begin{nontuteanswer}
+\Small
+We replace the \SCALA{prefix(0)} component with a new component
+\SCALA{Control} which handles the resets:
+%
+\begin{verbatim}
+                in                       out
+ [x,y,z,...] >------>|\    mid     /|-------> [x,x+y,x+y+z,...]
+                     |+}--------->{ |
+                 +-->|/            \|--+
+             addl|                     |back
+                 +------<Control<------+
+                           /|\
+                            |
+                          reset
+\end{verbatim}
+%
+It's also possible to put the resetting component elsewhere in the network.
+
+Note that \SCALA{Control} needs to absorb the sum currently circulating before
+(or after) injecting a fresh value~$0$.  It makes sense to give \SCALA{reset}
+priority over values currently circulating.
+%
+\begin{scala}
+import ox.CSO._, ox.cso.Components
+
+object ResettableIntegrator{
+
+  def Control(in: ?[Int], out: ![Int], reset: ?[Unit]) 
+  = proc{
+    out!0;
+    priserve(
+      reset --> { 
+        reset?; println("Resetting"); in?; out!0 
+      }
+      | in --> { out!(in?) }
+    )
+  }  
+
+  def integrator(in: ?[Int], out: ![Int], reset: ?[Unit])
+  = {
+    val mid, back, addl = OneOne[Int]
+    (Components.zipwith((x:Int, y:Int)=>x+y)(in, addl, mid)
+    || Components.tee (mid, List(out, back))
+    || Control(back, addl, reset)
+    )
+  }
+
+  // Produce stream of nats
+  def Nats(out: ![Int]) = proc("nats"){
+    var n = 0;
+    repeat{ out!n; n+=1; sleep(200) }
+  }
+
+  // Randomly reset
+  def Resetter(reset: ![Unit]) = proc{
+    val random = new scala.util.Random;
+    repeat{ sleep(random.nextInt(1000)); reset!(); }
+  }  
+
+  // Test rig, using the above
+  def TestRig = {
+    val in, out = OneOne[Int]; val reset = OneOne[Unit];
+    ( integrator(in, out, reset) || 
+     Nats(in) || Resetter(reset) || 
+     Components.console(out) )
+  }
+
+  def main(args : Array[String]) = TestRig()
+}
+\end{scala}
+
+\end{nontuteanswer}

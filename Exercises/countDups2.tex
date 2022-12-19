@@ -1,0 +1,105 @@
+\begin{question}
+\Programming\
+Suppose you are given two arrays, as follows:
+%
+\begin{scala}
+  val N = ...;
+  val a = new Array[Int](N);
+  val b = new Array[Int](N);
+\end{scala}
+%
+Neither array contains any repetitions.  Write a concurrent program to count
+the number of distinct values that appear in both arrays.  Briefly explain
+your design.  \textbf{Hint:} use a hash table
+(\url{scala.collection.mutable.HashSet}).   
+\end{question}
+
+%%%%%
+
+\begin{answer}
+We split \SCALA{a} into \SCALA{aSegs} segments, and \SCALA{b} into
+\SCALA{bSegs} segments.  Each of the \SCALA{numWorkers = aSegs*bSegs} workers
+wil work on a segment of \SCALA{a} and a segment of~\SCALA{b}, and count the
+number of values that appear in both segments, and send the result to the
+controller.  The elements of the \SCALA{b} segment are put into a hash table
+to allow fast checking of membership.
+%
+\begin{scala}
+// Given arrays a, b, with no repetitions, count the 
+// number of distinct elements in both a and b.
+
+import ox.CSO._;
+
+object CountDups{
+  val N = 500000; // size of arrays
+  val a = new Array[Int](N);
+  val b = new Array[Int](N);
+
+  // Each worker will work on a segment of a and 
+  // a segment of b
+  val aSegs = 1; // number of segments of a
+  val aSegSize = N/aSegs
+  val bSegs = 8; // number of segments of b
+  val bSegSize = N/bSegs
+  val numWorkers = aSegs*bSegs; 
+
+  // A single worker
+  def Worker(me: Int, toController: ![Int]) = proc{
+    // This worker will deal with a[aStart..aEnd) 
+    // and b[bStart..bEnd) 
+    def aStart = (me/bSegs) * aSegSize;
+    def aEnd = (me/bSegs + 1) * aSegSize;
+    def bStart = (me%bSegs) * bSegSize;
+    def bEnd = (me%bSegs + 1) * bSegSize;
+
+    // Put all b elements in hash table
+    // val bHash = new java.util.HashSet[Int](bSegSize*2);
+    // for(i <- bStart until bEnd) bHash.add(b(i));
+    val bHash = new scala.collection.mutable.HashSet[Int];
+    for(i <- bStart until bEnd) bHash += b(i);
+
+    // Now iterate through segment of a, counting how 
+    // many entries are in bHash
+    var count = 0;
+    for(i <- aStart until aEnd)
+      if(bHash.contains(a(i))) count+=1;
+
+    // Send result to controller
+    toController!count;
+  }
+
+  // The controller
+  def Controller(toController: ?[Int]){
+    var count = 0;
+    for(i <- 0 until numWorkers) count += (toController?);
+    println(count);
+  }
+
+  // Initialise arrays
+  def Init{
+    // We set a(i)=i, b(i)=2*i;
+    for(i <- 0 until N){ a(i)=i; b(i)=2*i; }
+  }
+
+  // Construct system
+  val toController = ManyOne[Int];
+  def Workers =
+    || ( for(i <- 0 until numWorkers) yield 
+           Worker(i, toController) )
+  def System = Controller(toController) || Workers
+
+  def main(args:Array[String]) = {
+    Init; 
+    val t0 = java.lang.System.currentTimeMillis();
+    System();
+    println("Time taken: "+
+      (java.lang.System.currentTimeMillis()-t0)/1000.0);
+  }
+}
+\end{scala}
+
+My experiments suggest that this is fastest (on an 8 processor machine) when
+we take \SCALA{aSegs = 1} and \SCALA{bSegs = 8}.
+
+Curiously, the Scala hashtable seems considerably faster than the Java one. 
+\end{answer}

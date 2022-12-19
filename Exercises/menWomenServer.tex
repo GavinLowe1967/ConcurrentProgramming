@@ -1,0 +1,291 @@
+\begin{question}
+\Programming\ Consider the following synchronisation problem.  There are two
+types of client process, which we shall call \emph{men} and \emph{women}.
+These processes need to pair off for some purpose, with each pair containing
+one process of each type.
+%
+Design a server process to support this.  Each client should send its name to
+the server, and receive back the name of its partner.  Encapsulate the server
+within a class, with public methods
+\begin{scala}
+  def manSync(me: String): String = ...
+  def womanSync(me: String): String = ...
+\end{scala}
+
+Implement a test rig for your implementation: think carefully about the
+correctness condition. 
+\end{question}
+
+%%%%%
+
+\begin{answer}
+My solution is below.  The server has two request channels, one for each type
+of client.  Each client sends its name and a reply channel.  The server waits
+for a request from a man, and a request from a woman, and pairs them off.
+%
+\begin{scala}
+class MenWomenServer{
+  private type ReplyChan = Chan[String]
+
+  /** Channels sending proposals from a man, resp., a woman. */
+  private val manProp, womanProp = ManyOne[(String, ReplyChan)]
+
+  /** A man tries to find a partner. */
+  def manSync(me: String): String = {
+    val c = OneOne[String]
+    manProp!(me,c)
+    c?()
+  }
+
+  /** A woman tries to find a partner. */
+  def womanSync(me: String): String = {
+    val c = OneOne[String]
+    womanProp!(me,c)
+    c?()
+  }
+
+  /** The server. */
+  private def server = proc{
+    repeat{
+      // Wait for a man and woman, and pair them off. 
+      val (him,hisC) = manProp?(); val (her,herC) = womanProp?()
+      hisC!her; herC!him
+    }
+  }
+
+  server.fork
+
+  /** Shut down this object (so the server thread terminates). */
+  def shutdown = { manProp.close; womanProp.close }
+}
+\end{scala}
+
+There are alternative solutions that involve storing requests that cannot be
+paired immediately; however, these are more complex.  It is often best to
+avoid communicating on a channel if you know the corresponding request can't
+be served. 
+
+My testing code is below.  We need to check that men and women receive
+compatible results: if man~$m$ thinks he is paired with woman~$w$, then $w$
+thinks she is paired with~$m$; this implies the vice-versa direction (assuming
+equal numbers of men and women).  Each man stores his result in
+|partnerOfMan|, and each woman stores her result in |partnerOfWoman|; we then
+check the results agree.  (Each man and woman has an integer identity; we take
+his/her name to be the corresponding string; we cast back to an |Int| to store
+in the arrays.)
+
+\begin{scala}
+object MenWomenTest{
+  /* In each test, each man/woman writes the identity of his/her partner into an
+   * array.  We then test that the two arrays agree. */
+
+  // Arrays that hold the id of each man/woman's partner
+  var partnerOfMan, partnerOfWoman: Array[Int] = null
+
+  /** Process for a man. */
+  def man(me: Int, mws: MenWomenServer) = proc{
+    partnerOfMan(me) = mws.manSync(me.toString).toInt
+  }
+
+  /** Process for a woman. */
+  def woman(me: Int, mws: MenWomenServer) = proc{
+    partnerOfWoman(me) = mws.womanSync(me.toString).toInt
+  }
+
+  /** Do a single test. */
+  def doTest = {
+    val n = Random.nextInt(20) // # men, women
+    partnerOfMan = new Array[Int](n); partnerOfWoman = new Array[Int](n)
+    val mwt = new MenWomenServer
+    val men = || (for(i <- 0 until n) yield man(i, mwt))
+    val women = || (for(i <- 0 until n) yield woman(i, mwt))
+    run(men || women)
+    mwt.shutdown
+    for(m <- 0 until n)
+      assert(partnerOfWoman(partnerOfMan(m)) == m,
+             partnerOfMan.mkString(", ")+"\n"+
+               partnerOfWoman.mkString(", ")+"\n"+m)
+  }
+
+  def main(args: Array[String]) = {
+    for(i <- 0 until 100000){ doTest; if(i%200 == 0) print(".") }
+    println; exit
+  }
+}
+\end{scala}
+\end{answer}
+% 
+
+%\begin{scala}
+% // The men and women problem, using a server process
+
+% import ox.CSO._
+
+% class MenWomen{
+%   type Name = String; // Names of men and women
+%   private type ReplyChan = OneOne[Name]; // channels for replies
+
+%   // Each request contains the name of the requester and a reply channel
+%   private type Req = Tuple2[Name, ReplyChan];
+%   private val manReq, womanReq = ManyOne[Req];
+
+%   // Men and women send a request to the server on a fresh channel, and
+%   // receive back a reply
+%   def ManSync(me: Name) : Name = {
+%     val c = OneOne[Name]; manReq ! (me, c);
+%     val her = c?; return her;
+%   }
+
+%   def WomanSync(me: Name) : Name = {
+%     val c = OneOne[Name]; womanReq ! (me, c);
+%     val him = c?; return him;
+%   }
+
+%   private def Server = proc{
+%     // Queues storing the men and women who have not yet been paired; at most
+%     // one should be non-empty
+%     val manQueue = new scala.collection.mutable.Queue[Req];
+%     val womanQueue = new scala.collection.mutable.Queue[Req];
+%     // The server stores unmatched requests in queues.  Each new request is
+%     // matched immediately, if possible; otherwise it's places in the relevant
+%     // queue.
+
+%     serve(
+%       manReq --> {
+% 	val (man, manc) = manReq?; 
+% 	if(womanQueue.isEmpty) manQueue += (man, manc);
+% 	else{
+% 	  val (woman, womanc) = womanQueue.dequeue;
+% 	  manc ! woman; womanc ! man;
+% 	} 
+%       }
+%       |
+%       womanReq --> {
+% 	val (woman, womanc) = womanReq?; 
+% 	if(manQueue.isEmpty) womanQueue += (woman, womanc);
+% 	else{
+% 	  val (man, manc) = manQueue.dequeue;
+% 	  manc ! woman; womanc ! man;
+% 	} 
+%       }
+%     )
+%   }
+
+%   // Public method to close down the server
+%   def Close = { manReq.close; womanReq.close; }
+
+%   // Fork off server process
+%   Server.fork;
+% }
+
+% // -------------------------------------------
+% // Class to test the module
+
+% object MenWomenTest{
+%   val N = 10;
+%   val random = new scala.util.Random;
+
+%   // Create the server
+%   val menWomenServer = new MenWomen;
+
+%   type Name = menWomenServer.Name;
+
+%   // Men and women call the appropriate methods, after a short delay
+%   def Man(me: Name) = proc{
+%     sleep(random.nextInt(2)); val her = menWomenServer.ManSync(me);
+%     println("Man "+me+" pairs with woman "+her);
+%   }
+
+%   def Woman(me: Name) = proc{
+%     sleep(random.nextInt(2)); val him = menWomenServer.WomanSync(me);
+%     println("Woman "+me+" pairs with man "+him);
+%   }
+
+%   // Put the system together
+%   def Men = || ( for (i <- 0 until N) yield Man("man"+i) );
+%   def Women = || ( for (i <- 0 until N) yield Woman("woman"+i) );
+  
+%   def System = Men || Women;
+
+%   def main(args : Array[String]) = { System() ; menWomenServer.Close; }
+% }
+% \end{scala}
+% \end{answer}
+
+
+%% \begin{scala}
+%% // The men and women problem, using a server process
+
+%% import ox.CSO._
+
+%% object MenWomen{
+
+%%   val N = 10;
+%%   val random = new scala.util.Random;
+
+%%   type Name = String; // Names of men and women
+%%   type ReplyChan = OneOne[Name]; // channels for replies
+
+%%   // Each request contains the name of the requester and a reply channel
+%%   type Req = Tuple2[Name, ReplyChan];
+%%   val manReq, womanReq = ManyOne[Req];
+
+%%   // Men and women send a request and receive back a reply
+%%   def Man(me: Name) = proc{
+%%     val c = OneOne[Name];
+%%     sleep(random.nextInt(2));
+%%     manReq ! (me, c);
+%%     val her = c?;
+%%     println("Man "+me+" pairs with woman "+her);
+%%   }
+
+%%   def Woman(me: Name) = proc{
+%%     val c = OneOne[Name];
+%%     sleep(random.nextInt(2));
+%%     womanReq ! (me, c);
+%%     val him = c?;
+%%     println("Woman "+me+" pairs with man "+him);
+%%   }
+
+%%   def Server = proc{
+%%     // Queues storing the men and women who have not yet been paired; at most
+%%     // one should be non-empty
+%%     val manQueue = new scala.collection.mutable.Queue[Req];
+%%     val womanQueue = new scala.collection.mutable.Queue[Req];
+%%     // The server stores unmatched requests in queues.  Each new request is
+%%     // matched immediately, if possible; otherwise it's placed in the relevant
+%%     // queue.
+
+%%     serve(
+%%       manReq --> {
+%% 	val (man, manc) = manReq?; 
+%% 	if(womanQueue.isEmpty) manQueue += (man, manc);
+%% 	else{
+%% 	  val (woman, womanc) = womanQueue.dequeue;
+%% 	  manc ! woman; womanc ! man;
+%% 	} 
+%%       }
+%%       |
+%%       womanReq --> {
+%% 	val (woman, womanc) = womanReq?; 
+%% 	if(manQueue.isEmpty) womanQueue += (woman, womanc);
+%% 	else{
+%% 	  val (man, manc) = manQueue.dequeue;
+%% 	  manc ! woman; womanc ! man;
+%% 	} 
+%%       }
+%%     )
+%%   }
+
+%%   // Put the system together
+%%   def Men = || ( for (i <- 0 until N) yield Man("man"+i) );
+%%   def Women = || ( for (i <- 0 until N) yield Woman("woman"+i) );
+  
+%%   def System = Men || Women || Server;
+
+%%   def main(args : Array[String]) = System() 
+%% }
+%% \end{scala}
+%\end{answer}
+
+      

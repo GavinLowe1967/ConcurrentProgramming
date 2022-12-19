@@ -1,0 +1,119 @@
+\begin{nontutequestion}
+\Programming\ 
+The \emph{readers and writers problem} is a classic synchronisation problem.
+Consider a collection of processes, each of which want to access a database
+concurrently, some for reading and some for writing.  It is allowable for
+several readers to be accessing the database simultaneously, since their
+transactions will be independent.  However, it is not allowable for two
+writers to have simultaneous access, nor for a reader and writer to have
+simultaneous access.
+
+Implement a solution to the readers and writers problem using a server
+process: each reader and writer should communicate with the server when
+entering or leaving.
+
+Is a reader or writer who is trying to gain entry to the database guaranteed
+to succeed, or could it be locked out forever?  If the latter, how could this
+be avoided? 
+\end{nontutequestion}
+
+%%%%%
+
+\begin{nontuteanswer}
+\Small
+The server needs to keep track of the numbers of readers and writers currently
+accessing the database, and maintain the invariant
+\[
+(readers=0 \land writers \le 1) \lor writers=0
+\]
+
+Avoiding starvation is tricky, since, say readers may always gain access,
+locking the writers out for ever.  Below, priority is given to processes
+wishing to leave, and when $readers=0 \land writers=0$, it alternates between
+giving priority to a reader or a writer (according to the flag
+\SCALA{writerPri}).    
+%
+\begin{scala}[showstringspaces=false]
+// The readers and writers problem
+import ox.CSO._
+
+object ReadersWriters{
+  val random = new scala.util.Random;
+
+  // A reader, which just repeatedly enters and leaves
+  def Reader(me: Int, enter: ![Int], leave: ![Int]) = proc{
+    repeat{
+      sleep(random.nextInt(2000)); enter!me;
+      sleep(random.nextInt(1000)); leave!me
+    }
+  }
+
+  // A reader, which does likewise
+  def Writer(me: Int, enter: ![Int], leave: ![Int])= proc{
+    repeat{
+      sleep(random.nextInt(2000)); enter!me;
+      sleep(random.nextInt(1000)); leave!me
+    }
+  }
+
+  // A server which controls the entering and leaving, 
+  // maintaining the invariant: (readers==0 && writers<=1) || writers==0
+  // Priority is always given to leaving.  When readers==0 and writers==0, 
+  // priority is given to a writer to enter next iff writerPri
+  def Server(readerEnter: ?[Int], readerLeave: ?[Int],
+	     writerEnter: ?[Int], writerLeave: ?[Int])
+  = proc{
+    var readers = 0; var writers = 0;
+    def Report = { println("readers="+readers+"; writers="+writers); }
+    var writerPri = true; // Does writer get priority?
+
+    priserve(
+      (readers>0 &&& readerLeave) --> {
+	val id = readerLeave?; readers-=1; println("Reader "+id+" leaves"); Report
+      }
+      | 
+      (writers>0 &&& writerLeave) --> {
+	val id = writerLeave?; writers-=1; println("Writer "+id+" leaves"); Report
+      }
+      | 
+      (writerPri && readers==0 && writers==0 &&& writerEnter) --> {
+	val id = writerEnter?; writers+=1; writerPri=false;
+	println("Writer "+id+" enters"); Report
+      }
+      |
+      (writers==0 &&& readerEnter) --> {
+	val id = readerEnter?; readers+=1; writerPri=true;
+	println("Reader "+id+" enters"); Report
+      }
+      | 
+      (!writerPri && readers==0 && writers==0 &&& writerEnter) --> {
+	val id = writerEnter?; writers+=1; writerPri=false;
+	println("Writer "+id+" enters"); Report
+      }
+    )
+  }
+
+  // Number of readers and writers:
+  val readers = 5; val writers = 5
+
+  // Declare the channels
+  val readerEnter, readerLeave, writerEnter, writerLeave = ManyOne[Int];  
+
+  def Readers = 
+    || ( for(i <- 0 until readers) yield Reader(i, readerEnter, readerLeave) )
+  def Writers =
+    || ( for(i <- 0 until readers) yield Writer(i, writerEnter, writerLeave) )
+  def System = 
+    Readers || Writers || Server(readerEnter,readerLeave,writerEnter,writerLeave)
+
+  def main(args : Array[String]) = { System() }
+}
+\end{scala}
+
+This does not guarantee starvation freedom, since the readers may try to enter
+sufficiently often that $readers$ never reaches zero, so no writer can gain
+entry.  This can be avoided by having writers register their interest (by
+another communication, that the server always accepts), and then not allowing
+any more \SCALA{readerEnter} events before a \SCALA{writerEnter} event.
+\end{nontuteanswer}
+

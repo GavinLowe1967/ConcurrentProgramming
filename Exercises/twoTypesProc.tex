@@ -1,0 +1,170 @@
+\begin{question}
+A particular system contains two types of client process, which we shall call
+A and~B.  They share a resource.  However, the resource may be used by only
+one type of client process at a time: if a client tries to access the
+resource while a client of the other type is using it, then it must block
+until all clients of the other type finish.  There is no limit on the number
+of clients of a single type that may use the resource at one time.
+
+The aim of this question is to enforce the above requirement using the three
+different types of concurrency primitive: message passing, monitors and
+semaphores.  In each part of the question you should use only the concurrency
+primitive mentioned.
+
+You will probably find that your code for types A and B are very similar.  If
+so, you should give the code for one type fully, but you may elide the code
+for the other type.
+
+%%%%%
+
+\begin{enumerate}
+\item
+Implement a server process to enforce the above requirement.  Clients of type
+A and B should synchronise with the server on the ManyOne channels
+\SCALA{AEnter} and \SCALA{BEnter}, respectively, before using the resource;
+these communications should be blocked when clients of the other type are
+using the resource.  The clients should synchronise with the server on the
+ManyOne channels \SCALA{ALeave} and \SCALA{BLeave}, respectively, when they
+finish using the resource.  Hence the signature of the server is:
+%
+\begin{scala}
+def Server(AEnter: ?[Unit], BEnter: ?[Unit], 
+           ALeave: ?[Unit], BLeave: ?[Unit]) = proc{ ... }
+\end{scala}
+\marks{6}
+
+%%%%%
+
+\item
+Now implement a monitor with the following signature to enforce the
+requirement:
+%
+\begin{scala}
+object Monitor{
+  def AEnter = ...
+  def BEnter = ...
+  def ALeave = ...
+  def BLeave = ...
+}
+\end{scala}
+\marks{7}
+
+\item
+Finally, use semaphores to implement an object with the same signature as in
+the previous part to enforce the requirement.  \marks{12}
+\end{enumerate}
+\end{question}
+
+%%%%%%%%%%
+
+\begin{answer}
+{\bf Part a}
+\begin{scala}
+def Server(AEnter: ?[Unit], BEnter: ?[Unit], 
+           ALeave: ?[Unit], BLeave: ?[Unit])
+= proc{
+  var typeA = 0; var typeB = 0; 
+  // Number of type A, type B currently in
+
+  serve(
+    (typeB==0 &&& AEnter) --> { AEnter?; typeA += 1; }
+    | (typeA==0 &&& BEnter) --> {BEnter?; typeB += 1; }
+    | ALeave --> { ALeave?; typeA -= 1; }
+    | BLeave --> { BLeave?; typeB -= 1; }
+  )
+}
+\end{scala}
+[Quite easy.]
+
+%%%%%
+
+{\bf Part b}
+%
+\begin{scala}  
+object Monitor{
+  private var typeA = 0; private var typeB = 0; 
+  // Number of type A, type B currently in
+
+  def AEnter = synchronized{
+    while(typeB>0) wait();
+    typeA += 1;
+  }
+
+  def BEnter = synchronized{
+    while(typeA>0) wait();
+    typeB += 1;
+  }
+
+  def ALeave = synchronized{
+    typeA -= 1;
+    if(typeA==0) notifyAll(); // wake the others up
+  }
+
+  def BLeave = synchronized{
+    typeB -= 1;
+    if(typeB==0) notifyAll(); // wake the others up
+  }
+}
+\end{scala}
+[Reasonably straightforward.]
+
+%%%%%
+
+{\bf Part c}
+%
+\begin{scala}
+object Monitor{
+  private var typeA = 0; private var typeB = 0; 
+  // Number of type A, type B currently in
+
+  private var AWaiting = 0; private var BWaiting = 0;
+  // Number of A, B currently waiting
+
+  private val AEntry, BEntry = new Semaphore;
+  AEntry.down; BEntry.down
+  // Semaphores for A, B to wait on
+
+  private val mutex = new Semaphore;
+
+  // Unblock somebody, if anybody waiting
+  private def Signal = {
+    if(typeA==0 && BWaiting>0){ BEntry.up; }
+    else if (typeB==0 && AWaiting>0){ AEntry.up; }
+    else mutex.up;
+  }
+
+  def AEnter = {
+    // Await typeB==0
+    mutex.down;
+    if(typeB>0){  // wait to be allowed to enter
+      AWaiting += 1; mutex.up; AEntry.down; AWaiting -= 1; 
+    }      
+    typeA += 1;
+    Signal;
+  }
+
+  def BEnter = {
+    // Await typeA==0
+    mutex.down;
+    if(typeA>0){  // wait to be allowed to enter
+      BWaiting += 1; mutex.up; BEntry.down; BWaiting -= 1; 
+    }      
+    typeB += 1;
+    Signal; 
+  }
+
+  def ALeave = {
+    mutex.down;
+    typeA -= 1;
+    Signal;
+  }
+
+  def BLeave = {
+    mutex.down;
+    typeB -= 1;
+    Signal; 
+  }
+}
+\end{scala}
+[Quite difficult.]
+\end{answer}

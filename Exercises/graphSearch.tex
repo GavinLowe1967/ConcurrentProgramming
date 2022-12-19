@@ -1,0 +1,231 @@
+\begin{question}
+\begin{enumerate}
+\item
+Write a definition of a process
+%
+\begin{scala}
+def ListBuilder(in: ?[Int], out: ![List[Int]]) = proc{ ... }
+\end{scala}
+%
+with the following behaviour.  The process should be willing to 
+%
+\begin{itemize}
+\item
+receive \SCALA{Int}s on \SCALA{in};
+
+\item
+send on \SCALA{out} a list containing (in some order) the \SCALA{Int}s it has
+received since the last communication on \SCALA{out}.
+\end{itemize}
+%
+(In Scala, you can initialise a variable \SCALA{xs} to the empty list using
+the code \SCALA{var xs:List[Int] = Nil}; you can add an element \SCALA{x} onto
+\SCALA{xs} using \SCALA{xs = x :: xs}).  \marks{5}
+\end{enumerate}
+
+\medskip
+%%%%%
+
+\noindent
+The rest of this question concerns a program to perform a breadth-first
+traversal of a directed graph.  We use a class with the following signature to
+represent nodes of the graph:
+%
+\begin{scala}
+class Node(id:Int){
+  val successors : List[Int] = ...; // list of successors
+  def Visit : Unit = ...;
+}
+\end{scala}
+%
+The field \SCALA{id} represents the identity of the node.  The list
+\SCALA{n.successors} contains the identities of those nodes \SCALA{n1} such
+that there is an edge from this node to~\SCALA{n1}.  
+
+The nodes themselves are stored in an array
+%
+\begin{scala}
+val nodes : Array[Node];
+\end{scala}
+%
+of some size~$N$, so that a node with identity~\SCALA{id} is stored in
+\SCALA{nodes(id)}.
+
+%%%%%
+
+\begin{enumerate}
+\item[(b)]  
+%
+Write a concurrent program, to perform a traversal of the graph, executing
+\SCALA{Visit} on each node reachable from \SCALA{nodes(0)}.  This should be
+done in breadth-first order; i.e., \SCALA{Visit} should be executed on all
+nodes at distance~$k$ from the starting node before any node at distance
+$k+1$.
+
+Your program should use $p$ worker processes (you may assume $N \mod p = 0$).
+Each worker $i$ should be responsible for nodes $[i \times height,
+  (i+1)*height)$, where $height = N/p$.  The worker should record which of
+those nodes have been previously visited, and call \SCALA{Visit} upon them
+  appropriately.  When a worker encounters a new node, the identity of that
+  node should be passed on to the worker responsible for it, to be visited
+  on the next round.  {\bf Hint:} use an instance of \SCALA{ListBuilder} as a
+  subprocess within each worker to receive these identities.
+
+You should briefly explain your design, including an explanation of the
+following points:
+%
+\begin{enumerate}
+\item
+How your program ensures that the nodes really are visited in breadth-first
+order; 
+
+\item
+How your program terminates when all reachable nodes have been visited.
+\end{enumerate}
+                                                                 \marks{20}
+
+%%%%%
+
+%% \item[(c)]
+%% %
+%% Briefly discuss ways in which your program could be made more efficient.
+%%                                                                  \marks{5}
+\end{enumerate}
+
+
+\end{question}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%% File GraphSearch/Search1.scala
+\begin{answer}
+\begin{enumerate}
+\item
+\begin{scala}
+def ListBuilder(in: ?[Int], out: ![List[Int]]) = proc{
+  var xs:List[Int] = Nil;
+  serve(
+    in -?-> { xs = (in?) :: xs; }
+    | out -!-> { out!xs; xs = Nil; }
+  )
+}
+\end{scala}
+
+%%%%%
+\item
+Each worker comprises a \SCALA{Visitor} process, that does the actual
+visiting, and a \SCALA{ListBuilder} process that receives identities of nodes
+from other workers.
+
+On each round $k$ (starting from 0), the nodes at distance $k$ from the
+starting node are visited.  The successors are forwarded to the
+\SCALA{ListBuilder}s of the appropriate other workers.  Once all such nodes
+have been visited, the workers perform a barrier synchronisation, the
+\SCALA{Visitor}s receive the next list of nodes from their
+\SCALA{ListBuilder}s, and they perform another barrier synchronisation (the
+need for two barrier synchronisations is not obvious. 
+
+On each round, each worker keeps track of whether it has visited any new
+nodes.  The second barrier synchronisation calculates whether no worker has
+visited any new nodes on this round.  If so, each worker terminates (the
+\SCALA{Visitor} closes the channels to the \SCALA{ListBuilder} to make it
+terminate). 
+
+
+\begin{scala}
+import ox.CSO._
+
+object Search1{
+  val N = 16; // number of nodes
+  val p = 8; // number of workers
+  assert(N%p==0); 
+  // height of strip each node is responsible for:
+  val height = N/p;
+
+  // Class to represent nodes
+  class Node(id:Int){ ... }
+
+  // Initialise the nodes
+  val nodes = new Array[Node](N);
+  for(i <- 0 until N) nodes(i) = new Node(i);
+
+  def ListBuilder(in: ?[Int], out: ![List[Int]]) = ...;
+
+  // Combining barrier
+  def and(b1:Boolean,b2:Boolean) = b1 && b2
+  val combBarrier = new CombiningBarrier(p, true, and);
+  val barrier = new Barrier(p);
+
+  // Find worker responsible for node n
+  def workerOf(n: Int) = n/height;
+
+  // Channel to send indices of new nodes to workers
+  val toWorker = ManyOne[Int](p);
+
+  // Worker to deal with nodes [start..end)
+  def Worker(me: Int) = proc{
+    val start = me*height; val end = start+height;
+
+    // Channel to communicate between components
+    val getNewSeen = OneOne[List[Int]];
+
+    // Process to do the visiting
+    def Visitor = proc("Visitor"+me){
+      // Store status for node i in visited(i-start)
+      val visited = new Array[Boolean](end-start);
+      for(i <- start until end) visited(i-start) = false;
+
+      // List of nodes to be considered on the next iteration
+      var seen:List[Int] = Nil;
+      if(start==0) seen = 0 :: seen;
+
+      var done = false; // are we finished?
+      
+      // Main loop
+      while(!done){
+	var myDone = true; 
+        // myDone is true if we've visited no new nodes 
+        // on this round
+	for(i <- seen){
+	  if(! visited(i-start)){
+	    // Can now visit this node
+	    nodes(i).Visit; visited(i-start) = true; 
+            myDone = false;
+	    // Set all successors as seen
+	    for(j <- nodes(i).successors) 
+              toWorker(workerOf(j)) ! j
+	  }
+	}
+	barrier.sync;
+	seen = getNewSeen? ;
+	done = combBarrier.sync(myDone);
+      }
+
+      // Now close down listener
+      toWorker(me).close; getNewSeen.close; 
+    }
+
+    // Put it together
+    (Visitor || ListBuilder(toWorker(me), getNewSeen))()    
+  }
+	  
+  // Put the system together
+  def System = || (for (i <- 0 until p) yield Worker(i))
+
+  def main(args:Array[String]) = System();
+}
+\end{scala}
+
+%%%%%
+
+%% \item
+%% The current design uses lots of messages.  It's better for each worker to send
+%% a single message to each other worker on each round, containing the
+%% appropriate \emph{list} of new nodes.
+
+%% With the current design, it would be better to buffer the \SCALA{toWorker}
+%% channels.  In this case, each \SCALA{ListBuilder} needs to use a
+%% \SCALA{priserve} to ensure the input channel is flushed before sending on the
+%% list of next nodes.
+\end{enumerate}
+\end{answer}

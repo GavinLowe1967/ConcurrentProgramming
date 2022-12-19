@@ -1,0 +1,319 @@
+\documentclass[fleqn,12pt]{article}
+\usepackage{bigpage,tech,url,javalistings,graphicx,csp-cm}
+\usepackage{questions}
+\def\color#1{}
+\def\Programming{\textbf{[Programming]}}
+
+\Small
+%\questionsonly
+\questionsandanswers
+%\answersonly
+%\nontuteanswersonly
+
+\title{Concurrent Programming: Exercises}
+\author{Gavin Lowe}
+
+\sloppy
+
+\begin{document}
+\maketitle
+
+You should complete all questions marked \Programming\ at a computer, and
+include suitable testing code and test results with your answers.
+
+Note that not all exam questions are included here.
+
+
+\section{Introduction}
+
+\input{web-browser} % Why make a web browser use concurrency?  
+
+\input{mvc} % omit
+
+%% \framebox{***} Why should a program with a GUI use concurrency?
+
+%% \framebox{***} Java event model
+
+
+
+\input{interleavings1} % Count number of execution seqs - formula
+
+\input{interleavings2} % based on Andrews 2.10; results of particular
+                       % interleaving 
+
+\input{interleavings3} % based on Andrews 2.15
+
+\input{queue} %Independent actions of queue -- add, remove, isFull, isEmpty --
+              %what can go wrong? Doesn't really work.
+
+\input{accountRace}
+
+\input{CSPVsCSOEvents}
+
+\framebox{Problems with Google calendar}
+
+%%%%%
+
+\section{Channels}
+
+\input{mergestreams} % merge two ordered streams
+
+\input{integrator}
+
+% \input{mergestreams2} % merge two ordered streams, which could be closed
+
+\input{pipeSort} % *** sort list of N numbers using pipe, A7.3
+
+%%%%%
+
+\section{Parallel programming}
+
+\input{nonDividing} % Remove assumption that \# processors divides \# segments.
+
+\input{matrix} % Matrix multiplication
+
+\input{countDups}
+% Given two arrays a and b, without repetitions, count the number of distinct
+% elements that appear in both a and b. 
+
+% \input{countDups2} % Same but give full code
+
+\framebox{Travelling salesman?}  Andrews 9.7
+
+\input{pi} % *** Estimating pi: pick random numbers x, y in [0,1);  prob$(x^2+y^2)<1 = \pi/4$. 
+
+%%%%%
+
+
+\section{Alternation}
+
+\input{merge} 
+
+\input{changeMachine}
+
+\input{altVsExtchoice}
+
+\input{altRestriction}
+
+\input{unboundedBuff}
+
+\input{resettableIntegrator}
+
+\framebox{Traffic lights?}
+
+
+%%%%%
+
+\section{Clients and Servers} % A7.6: Readers \& Writers 
+
+\input{readersWriters}
+
+\input{menWomenServer}
+
+\framebox{Elevator algorithm?}
+
+\framebox{Several-caster} 2008 exam, Q2
+
+\framebox{Multi-casting connections} 2008 exam, Q3
+
+\framebox{Consider} a set of processes where each process is identified by
+a unique integer. Each process has a constrained region, which can be entered
+only if the sum of all integers associated with processes already executing in
+their constrained regions is divisible by three.  Implement this in a
+client-server pattern.  Is it possible for a process to be locked out?
+
+\input{savingsAccount} % A7.8 Savings account problem
+
+\input{oneLaneBridge} % ***? A7.11 One-lane bridge
+
+%%%%%
+
+\section{Interacting Peers}
+
+\input{maleFemale} % based on A7.9 under interacting peers.
+
+\input{ringFold} % calculate fold round ring
+
+% \input{smallestCommon} % ***(part) A7.16 smallest common int
+
+\framebox{A7.17 distributed pairing} -- needs a symmetry breaker?
+
+\framebox{Decide conjunction of boolean variables held by nodes} -- with
+optimisation -- and then polymorphic generalisation.
+
+\framebox{Drinking Philosophers:} ***
+\url{http://www.cs.utexas.edu/~misra/scannedPdf.dir/DrinkingPhil.pdf} -- MSc
+exam? 
+
+\input{distTermination} % Distributed termination
+
+%%%%%%%%%%%%%%%%
+
+\section{Parallel computation}
+
+\input{barrierLog} % Implement barrier synchronisation in O(log N) steps
+
+\input{prefixSum} % In the prefix sum example, what can go wrong without the
+                  % barrier synchronisation?
+
+\input{prefixSumShared} % Prefix sum with shared variables
+
+\input{JacobiMP} % Convert Jacobi iteration into message-passing program.
+% Now done in lectures
+
+\framebox{LaPlace equation}
+
+\input{regionLabelling} % ***  Region labelling problem (A 3.26, 3.27), using
+% message passing, termination signalled via messages ***
+
+\framebox{Smoothing (A 9.9)}
+
+\framebox{Game of life on unbounded board}; keep track of coords of live cells.
+
+\framebox{Model motion of snooker balls.}
+
+\framebox{Monte carlo simulation??}
+
+\input{graphSearch} % *** Breadth-first search in a graph
+
+\input{gridMax}
+% *** $N^2$ processes, each has an integer; each should end up with the sum of
+% all the integers.  $O(\log N)$ rounds.
+
+
+%%%%%
+
+\section{Monitors}
+
+\input{buffer} % \framebox{Implement buffer (extending slot).}
+
+\input{consumerM} % \framebox{Consumer (Bear \& honeybees) (A 4.36)}
+
+\input{menWomenM}
+
+\input{mod3M}
+
+\framebox{Cigarette smokers problem, A4.27.}
+
+\framebox{Sleeping barber (A Sec 5.2.5)} ??
+
+\framebox{Savings account A 5.8 / B Ex 1.1} easy
+
+\framebox{Resource allocation (B Ex 1.?)} ??
+
+\framebox{Producer (Dining savages (A 5.12))}
+
+
+ 
+\framebox{Deli} hard
+
+\framebox{Sleeping don} hard
+
+\framebox{Unisex bathroom} easy
+
+\framebox{***} roller coaster ?
+
+\framebox{***} SJF
+
+\framebox{***} One lane bridge??
+
+
+%%%%%
+
+\section{Patterns}
+
+%\section{Recursive parallelism}
+
+\input{treeSum} % Sum of elements in a tree. -- one or two processes forked.
+
+\framebox{evaluation of arithmetic expressions}
+
+\framebox{MSort}
+
+\input{fibonacci} % Sheet 4
+
+\framebox{Matrix multiplication by blocks}
+
+\framebox{Readers \& writers}
+
+%%%%%
+
+%\section{Bag of tasks}
+
+% \framebox{Eight queens} -- MSc assignment?
+
+\input{adaptive} % Sheet 4 \framebox{Adaptive quadrature}
+
+\framebox{TSP}
+
+\framebox{Suppose the controller is a bottleneck.}  What can you do?
+
+\input{distBagTasks}
+ % \framebox{Distributed bag of tasks:} each process has its own bag, as a
+ % subprocess, which may pass tasks either to its own process or to another
+ % process.  Leads to distributed termination. ***
+
+\framebox{A 3.28 (generating primes)}
+
+\framebox{***} map-reduce \url{http://labs.google.com/papers/mapreduce.html}?.  Optional:
+some features from Secs 3, 4.  Polymorphic.
+
+\framebox{Countdown?}
+
+%%%%%
+
+\section{Semaphores}
+
+\input{consumerS} % sheet 4
+
+\input{menWomenS} % sheet 4
+
+\input{readersWritersBaton} % sheet 4
+
+\input{boundedBuffSemaphore} % Bounded buffer using semaphores, sheet 4.
+
+\framebox{Adapt barrier synchronisation} so that each node supplies some data,
+and they get back some function (fold) of that data.
+
+\framebox{(Most examples from monitors section).}
+
+\framebox{Combining barrier, A Sec 3.4.2?}
+
+\framebox{Tournament barrier A 3.14 ?}
+
+\framebox{A 4.4 (precedence)}
+
+
+\framebox{Bounded counting semaphore (using two semaphores)}
+
+\framebox{Implement a counting semaphore using a binary semaphore.}
+
+\framebox{Atomic broadcast (A 4.16)}
+
+\framebox{Incorrect solution to readers \& writers problem} -- explain problem
+
+\framebox{The water molecule problem (A 4.25)}
+
+\framebox{Unisex bathroom (A 4.30).}
+
+\framebox{Search / insert / delete A 4.32}
+
+\framebox{(4.35, 4.36, 4.37)}
+
+\input{mod3S} % - done in lectures
+
+\framebox{Cigarette smokers - A4.27}
+
+\framebox{One lane bridge - A4.31}
+
+
+
+%%%%%
+
+\section{Mixed synchronisation}
+
+\input{account}
+
+\input{twoTypesProc} (= Unisex bathroom)
+
+\end{document}

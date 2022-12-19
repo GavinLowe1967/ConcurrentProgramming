@@ -1,0 +1,117 @@
+\begin{question}
+Adapt the |TerminatingPartialQueue| class from lectures so as to use a
+monitor.  (If you like, you can change the signature, if it's more convenient
+for the following part.)
+
+Now adapt the concurrent graph search program from lectures so as to use
+shared variables and a monitor.  Test your code by adapting the word path
+program. 
+\end{question}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{answer}
+I've changed the signature so that |dequeue| returns an |Option| type.  (The
+implementation in lectures threw an exception in the termination case.)  
+%
+\begin{scala}
+/** A partial queue that terminates if all worker threads are attempting to
+  * dequeue, and the queue is empty.  This implementation uses a monitor internally.
+  * @param numWorkers the number of worker threads. */
+class MonitorTerminatingPartialQueue[A](numWorkers: Int){
+  /** The queue itself. */
+  private val queue = new Queue[A]
+
+  /** The number of threads currently waiting to perform a dequeue. */
+  private var waiting = 0
+
+  /** Has the queue been shut down? */
+  private var done = false
+
+  /** Enqueue x.  */
+  def enqueue(x: A) = synchronized{ 
+    if(!done){
+      queue.enqueue(x)
+      if(waiting > 0) notify()
+    }
+  }
+
+  /** Attempt to dequeue a value.  
+    * @return None if the queue has been shut down, or it the queue is empty
+    * and all threads are trying to dequeue. */
+  def dequeue: Option[A] = synchronized{
+    if(!done && queue.isEmpty){
+      if(waiting == numWorkers-1) shutdown() // System should terminate
+      else{ // we need to wait
+        waiting += 1
+        while(queue.isEmpty && !done) wait()
+        waiting -= 1
+      }
+    }
+    if(done) None 
+    else Some(queue.dequeue)
+  }
+
+  /** Shut down this queue. */
+  def shutdown() = synchronized{ done = true; notifyAll() }
+}
+\end{scala}
+%
+%% Note that if a |dequeue| operation was waiting, has been woken up, but not yet
+%% decremented received the lock, then it counts as still waiting as far as the
+%% test ``|waiting == numWorkers-1|'' is concerned: that's what we want. 
+
+Here's the graph search program.  The main changes are:
+\begin{itemize}
+\item The use of the previous class, and straightforward changes to deal with
+  it returning an |Option| type;
+
+\item The termination case: a thread that finds a solution stores it and
+  arranges for other threads to terminate; the relevant variable is protected
+  by a |synchronized| block to avoid races; note that there is no need for a
+  separate coordinator.
+\end{itemize}
+ %
+\begin{scala}
+/** A class to search Graph g concurrently. */
+class MonitorConcGraphSearch[N](g: Graph[N]) extends GraphSearch[N](g){
+  /**The number of workers. */
+  val numWorkers = 8
+
+  /** Try to find a path in g from start to a node that satisfies isTarget. */
+  def apply(start: N, isTarget: N => Boolean): Option[List[N]] = {
+    // All nodes seen so far.
+    val seen = new ConcSet[N]; seen.add(start)
+    // Queue storing edges and the path leading to that edge
+    val queue = new MonitorTerminatingPartialQueue[(N, List[N])](numWorkers)
+    queue.enqueue((start, List(start)))    
+    // Variable that ends up holding the result.
+    var result: Option[List[N]] = None
+
+    // A single worker
+    def worker = proc("worker"){
+      var done = false
+      while(!done) queue.dequeue match{
+        case Some((n, path)) =>
+          for(n1 <- g.succs(n)){
+            if(isTarget(n1)) synchronized{
+              if(result.isEmpty){ // we're the first one to find a result
+                result = Some(path :+ n1) // store result
+                queue.shutdown // cause others to terminate
+                done = true
+              }
+            }
+            else if(seen.add(n1)) queue.enqueue((n1, path :+ n1))
+          }
+        case None => done = true
+      } // end of while(...) ... match
+    }
+
+    // Release the workers. 
+    run(|| (for(_ <- 0 until numWorkers) yield worker))
+    result
+  }
+}
+\end{scala}
+
+\end{answer}

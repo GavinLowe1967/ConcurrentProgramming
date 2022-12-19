@@ -1,0 +1,54 @@
+\begin{question}
+\label{Q:barrierLog}
+Provide an implementation of barrier synchronisation that operates in
+$\Theta(\log n)$ time, for $n$ processes.  If you like, each process may pass
+its own identity to the \SCALA{sync} function.  Hint: base your implementation
+on one of the patterns from the ``Interacting Peers'' chapter.  Test your code
+by adapting the test framework on the course website. 
+\end{question}
+
+%%%%%
+
+\begin{answer}
+This implementation is based on the barrier tree synchronisation algorithm in
+Section 3.4.2 of Andrews's book.  It is similar to one of the patterns
+students saw in the ``Interacting Peers'' chapter.
+
+The processes are arranged in a binary heap.  Each waits until its children
+are ready, signals to its parent that all of its subtree is ready, waits for a
+``go'' signal from its parent, and passes that signal on to its children.
+%
+\begin{scala}
+class CombiningTreeBarrier(n: Int){
+  /** Channels by which a process signals to its parent that it is ready.
+    * Indexed by the child's identity. */ 
+  private val ready = Array.fill(n)(OneOne[Unit])
+
+  /** Channels by which a process signals to its children that it can
+    * continue.  Indexed by the child's (receiver's) identity. */ 
+  private val go = Array.fill(n)(OneOne[Unit])
+
+  /** Barrier protocol for node with identity me, in a system of n nodes. */
+  def sync(me: Int) = {
+    val child1 = 2*me+1; val child2 = 2*me+2
+    // Wait for ready signals from both children
+    if(child1 < N) ready(child1)?()
+    if(child2 < N) ready(child2)?()
+    // Send ready signal to parent, and wait for go reply, 
+    // unless this is the root
+    if(me != 0){ ready(me)!(); go(me)? }
+    // Send go signals to children
+    if(child1 < N) go(child1)!()
+    if(child2 < N) go(child2)!()
+  }
+}
+\end{scala}
+
+Possible topic for discussion: how could we turn this into a combining
+barrier?  Answer: arrange for values to be passed up on the |ready| channels;
+each thread combines its value with the values from its children and passes
+the result up; the final value is passed back down on the |go| channels; note
+that the values are combined following the shape of the heap, but the
+combining function is assumed associative and commutative, so this doesn't
+matter.
+\end{answer}

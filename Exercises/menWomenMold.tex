@@ -1,0 +1,182 @@
+\begin{question}
+Consider the following synchronisation problem.  There are two types of
+process, which we shall call Men and Women.  These processes need to pair off
+for some purpose, with each pair containing one process of each type.  A
+monitor is required, with a procedure for each type of process.  The procedure
+should block processes until a process of the other type is ready, at which
+point both should continue.
+%
+\begin{enumerate}
+\item
+The following monitor was suggested.  Explain why this does not meet the
+requirement. 
+%
+\begin{scala}
+object Monitor1{
+  var menWaiting = 0; var womenWaiting = 0; 
+    // number of men, women currently waiting
+  var manCommitted, womanCommitted = false;
+    // Have the next man, woman to return been decided 
+    // but not yet paired?
+
+  def ManEnter = synchronized{
+    if(womenWaiting==0 && !womanCommitted){
+      menWaiting += 1;
+      while(womenWaiting==0 && !womanCommitted) 
+        wait(); // wait for a woman
+      menWaiting -= 1; womanCommitted = false;
+    }
+    else{ 
+      manCommitted = true; notify();  // wake up a man
+    }
+  }
+
+  def WomanEnter = synchronized{
+     if(menWaiting==0 && !manCommitted){
+        womenWaiting += 1;
+        while(menWaiting==0 && !manCommitted) 
+          wait(); // wait for a man
+        womenWaiting -= 1; manCommitted = false;
+     }
+     else{ 
+       womanCommitted = true; notify(); // wake up a woman
+     }
+  }
+}
+\end{scala}
+
+\item
+Now the following monitor is suggested.  Explain why this doesn't meet the
+requirement, either.
+%
+\begin{scala}
+object Monitor2{
+  var menWaiting = 0; var womenWaiting = 0; 
+    // number of men, women currently waiting
+  var manCommitted, womanCommitted = false;
+    // Have the next man, woman to return been decided 
+    // but not yet paired?
+
+  def ManEnter = synchronized{
+    if(womenWaiting==0 && !womanCommitted || manCommitted){
+      menWaiting += 1;
+      while(womenWaiting==0 && !womanCommitted 
+            || manCommitted) 
+        wait(); // wait for a woman
+      menWaiting -= 1; womanCommitted = false;
+    }
+    else{ 
+      manCommitted = true; notifyAll();  // wake up a man
+    }
+  }
+
+  def WomanEnter = synchronized{
+    if(menWaiting==0 && !manCommitted || womanCommitted){
+      womenWaiting += 1;
+      while(menWaiting==0 && !manCommitted
+            || womanCommitted)
+        wait(); // wait for a man
+      womenWaiting -= 1; manCommitted = false;
+    }
+    else{ 
+      womanCommitted = true; notifyAll(); // wake up a woman
+    }
+  }
+}
+\end{scala}
+
+\item
+Suggest a definition for the module that does meet the requirement.
+\end{enumerate}
+\end{question}
+
+%%%%%%%%%%
+
+\begin{answer}
+\begin{enumerate}
+\item
+Consider the following execution.
+%
+\begin{enumerate}
+\item A man enters and waits (so \SCALA{menWaiting = 1}).
+
+\item
+A woman enters, finds \SCALA{menWaiting>0}, so sets \SCALA{womanCommitted =
+  true}, does \SCALA{notify()} and exits.
+
+\item
+A second woman enters, before the waiting man is scheduled, finds
+\SCALA{menWaiting>0}, so sets \SCALA{womanCommitted = true}, does
+\SCALA{notify()} and exits.
+
+\item
+Eventually the man is scheduled and exits.
+\end{enumerate}
+%
+So the poor man ends up with two women.  The point is that the second woman
+has no way of knowing that another woman has already paired off with the man. 
+
+%%%%%
+
+\item
+Consider the following execution.
+%
+\begin{enumerate}
+\item
+Men 1 and 2 enter and wait (so \SCALA{menWaiting = 2}).
+
+\item
+Woman 3 enters, finds \SCALA{menWaiting>0}, so sets \SCALA{womanCommitted =
+  true}, does \SCALA{notifyAll()} and exits.
+
+\item
+Woman 4 enters (before any man is scheduled), and waits (since
+\SCALA{womanCommitted = true}), setting \SCALA{womenWaiting = 1}.
+
+\item
+Man 1 is scheduled, sets \SCALA{womanCommitted = false}, \SCALA{menWaiting =
+  1}, and exits (paired with woman 3).
+
+\item
+Man 2 is scheduled, finds \SCALA{womenWaiting = 1} and so exits.
+\end{enumerate}
+%
+So poor woman 3 ends up with two men.  The point is that man 2 should wake up
+woman 4. 
+
+%%%%%
+
+\item
+I think the following version works.  Each process tests (in the final
+\SCALA{if} statement) whether it is the first or second of the pair to be
+woken. 
+%
+\begin{scala}
+object Monitor3{
+  var menWaiting = 0; var womenWaiting = 0; 
+    // number of men, women currently waiting
+  var manCommitted, womanCommitted = false;
+    // Have the next man, woman to return been decided 
+    // but not yet paired?
+
+  def ManEnter = synchronized{
+    menWaiting += 1;
+    while(womenWaiting==0 && !womanCommitted || manCommitted) 
+      wait(); // wait for a woman
+    menWaiting -= 1; manCommitted = true; 
+    if(!womanCommitted) notifyAll() 
+    else{ manCommitted = false; womanCommitted = false; }
+  }
+
+  def WomanEnter = synchronized{
+    womenWaiting += 1;
+    while(menWaiting==0 && !manCommitted || womanCommitted) 
+      wait(); // wait for a woman
+    womenWaiting -= 1; womanCommitted = true; 
+    if(!manCommitted) notifyAll() 
+    else{ manCommitted = false; womanCommitted = false; }
+  }
+}
+\end{scala}
+\end{enumerate}
+\end{answer}

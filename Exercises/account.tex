@@ -1,0 +1,168 @@
+\begin{question}
+Consider the following synchronisation problem.  A savings account is shared
+by $N$ people, each represented by a process.  Each process can make
+deposits and/or withdrawals.  The account records the current balance; this
+may never go negative.  As a result, a withdrawal may be blocked until
+sufficient funds become available.  
+
+The aim of this question is to implement the account using the three different
+types of concurrency primitive: message passing, monitors and semaphores.  In
+each part of the question you should use only the concurrency primitive
+mentioned. 
+
+Throughout this question, the system does not need to be fair as to which
+pending deposit is unblocked once sufficient funds become available.
+
+%%%%%%
+
+\begin{enumerate}
+\item
+Implement the account using a server process with message passing.  Requests
+from clients should be made using messages of type \SCALA{Request}:
+\begin{scala}
+  type ClientId = Int;
+  type Amount = Int;
+  abstract class Request;
+  case class Deposit(n:Amount, c:ClientId) extends Request;
+  case class Withdrawal(n:Amount, c:ClientId) extends Request;
+\end{scala}
+%
+Assume that the clients share a channel \SCALA{req} on which requests are
+made.  In response to requests, the server should send a response giving the
+current balance; assume each client \SCALA{c} has its own response channel
+\SCALA{resp(c)}.  Hence the signature of the server process is:
+%
+\begin{scala}
+  def Server(req: ?[Request], resp: Seq[![Int]]) = proc{ ... }
+\end{scala}
+                                                                \marks{8}
+
+%%%%%
+
+\item
+Now implement the account as a monitor with the following signature:
+%
+\begin{scala}
+object Account{
+  def Credit(amount:Amount, c:ClientId) : Int = ...
+  def Debit(amount:Int, c:ClientId) : Int = ...
+}
+\end{scala}
+                                                               \marks{6}
+
+%%%%%
+Finally, implement the account using semaphores; you should use an object with
+the same signature as in the previous part.
+
+{\bf Hint:} you might find it useful to use an array of semaphores, one for
+each client process, on which it waits when a withdrawal is blocked.
+                                                               \marks{11}
+\end{enumerate}
+\end{question}
+
+%%%%%%%%%%
+
+\begin{answer}
+Part a.
+
+\begin{scala}
+def Server(req: ?[Request], resp: Seq[![Int]]) = proc{
+  var balance = 0; // current balance
+
+  val deposits = new Array[Int](5); 
+    // amounts of queued deposits; -1 represents nothing queued
+  for(i <- 0 until N) deposits(i) = -1;
+
+  repeat(
+    req? match {
+      case Deposit(n,c) => {
+        balance += n;
+        resp(c)!balance;
+        // Try to unblock deposits
+        for(i <- 0 until N)
+          if(deposits(i)>0 && deposits(i)<=balance){
+            balance -= deposits(i); deposits(i) = -1; 
+            resp(i)!balance;
+          }
+      }
+      case Withdrawal(n,c) => 
+        if(n<=balance){ balance -= n; resp(c)!balance; }
+        else deposits(c) = n;
+    }
+  )
+}
+\end{scala}
+
+Part b.
+%
+\begin{scala}
+object Account{
+  private var balance = 0; // current balance
+
+  def Credit(amount:Int, c:ClientId) : Int = synchronized{
+    balance += amount;
+    notifyAll();
+    return balance;
+  }
+
+  def Debit(amount:Int, c:ClientId) : Int = synchronized{
+    while(balance<amount) wait();
+    balance -= amount;
+    return balance;
+  }
+}
+\end{scala}
+
+Part c.
+
+\begin{scala}
+object Account{
+  private var balance = 0; // current balance
+
+  // Semaphores and amounts for pending deposits
+  val sems = new Array[Semaphore](N);
+  val amounts = new Array[Int](N); 
+  for(i <- 0 until N){ 
+    sems(i) = new Semaphore; sems(i).down; amounts(i) = -1; 
+  }
+
+  val mutex = new Semaphore; // For mutual exclusion
+
+  // Wake up a waiting process, or lift mutex
+  private def Signal = {
+    var n = 0;
+    // Find process to wake up
+    while(n<N && (amounts(n)<0 || amounts(n)>balance)) n += 1;
+    if(n<N){ // wake up waiting debit
+      amounts(n) = -1; sems(n).up;
+    }
+    else mutex.up;
+  }
+
+  def Credit(amount:Int, id:Int) : Int = {
+    mutex.down;
+    balance += amount; val result = balance;
+    Signal;
+    return result;
+  }
+
+  def Debit(amount:Int, id:Int) : Int = {
+    mutex.down;
+    var result = 0;
+    if(balance<amount){
+      amounts(id) = amount;
+      mutex.up; sems(id).down; // wait to be woken
+      assert(amount <= balance);
+      // Can now proceed
+      balance -= amount; result = balance;
+      Signal;
+    }
+    else{ // Can proceed immediately
+      balance -= amount; result = balance;
+      mutex.up; // No need to signal
+    }
+    return result;
+  }
+}
+\end{scala}
+\end{answer}

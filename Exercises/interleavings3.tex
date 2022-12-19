@@ -1,0 +1,41 @@
+% based on Andrews 2.15
+\begin{question}
+Consider the code below.
+%
+\begin{scala}
+var x = 0; var y = 10
+
+def p = proc{ while(x != y) x = x+1 }
+
+def q = proc{ while(x != y) y = y-1 }
+
+def system = p || q
+\end{scala}
+%
+Will the process \SCALA{system} terminate?  Explain your answer.
+\end{question}
+%
+\begin{answer}
+It might or might not terminate.
+
+Consider an execution where we reach a state with \SCALA{x=4} and \SCALA{y=5},
+both processes evaluate \SCALA{x!=y} in this state and enter the body of the
+loop.  Now suppose each loop body is executed, giving \SCALA{x=5} and
+\SCALA{y=4}.  Subsequently we always have \SCALA{x>y}, so neither process
+terminates.
+
+Alternatively, again suppose we reach a state with \SCALA{x=4} and
+\SCALA{y=5}, both processes evaluate \SCALA{x!=y} in this state and enter the
+body of the loop.  Now suppose \SCALA{p} runs, setting \SCALA{x=5}, evaluates
+the guard which is now true, and terminates.  However, when \SCALA{q} runs, it
+sets \SCALA{y=4}, so never terminates.  Similarly, it is possible
+for~\SCALA{q} to terminate, but not~\SCALA{p}.
+
+There are also problems that are caused by the use of caching.  For example,
+|p| could reach a state with |x = 6|, while working with |y = 10| in its
+cache; and |q| could reach a state with |y = 4|, while working with |x = 0| in
+cache.  When they do refresh their caches, they will again run forever.  
+
+
+It is easy to find executions where both terminate.
+\end{answer}
