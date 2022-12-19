@@ -2,12 +2,12 @@
 \heading{Readers and writers}
 
 The \emph{readers and writers problem} is a classic synchronisation problem.
-Consider a collection of processes, each of which want to access a database
-concurrently, some for reading and some for writing.  It is allowable for
-several readers to be accessing the database simultaneously, since their
-transactions will be independent.  However, it is not allowable for two
-writers to have simultaneous access, nor for a reader and writer to have
-simultaneous access.
+Consider a collection of threads (or processes), each of which want to access
+a database concurrently, some for reading and some for writing.  It is
+allowable for several readers to be accessing the database simultaneously,
+since their transactions will be independent.  However, it is not allowable
+for two writers to have simultaneous access, nor for a reader and writer to
+have simultaneous access.
 \end{slide}
 
 %%%%%

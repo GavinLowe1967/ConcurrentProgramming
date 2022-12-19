@@ -175,8 +175,8 @@ val height = n/p
 
 The concurrent solution will proceed in rounds, each round corresponding to
 one iteration of the sequential solution.  In each round, all workers can read
-all of an array \SCALA{oldX} and each worker can write its own segment of
-\SCALA{newX}.  The roles of the arrays swaps between rounds.
+all of \SCALA{oldX} and each worker can write its own segment of \SCALA{newX}.
+The roles of the arrays swaps between rounds.
 
 We need to avoid race conditions, so we perform a barrier synchronisation at
 the end of each stage.
@@ -203,9 +203,10 @@ A \emph{combining} barrier
 \begin{scala}
   val combBarrier = new CombiningBarrier(p, f)
 \end{scala}
-is like a normal barrier, except each thread contributes some piece of
-data~$x_i$ to each synchronisation, and, assuming |f| is associative, they all
-end up with the value
+%
+where |f: (A,A) => A| is an associative function.  Each thread contributes
+some piece of data~$x_i: \sm{A}$ to each synchronisation.  They all receive
+back  the value
 \[
 \sm f(x_0, \sm f(x_1, \sm f(x_2, \ldots, \sm f(x_{p-2}, x_{p-1})\ldots).
 \]

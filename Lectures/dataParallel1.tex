@@ -116,21 +116,21 @@ class ServerBarrier(p: Int){
 
 %%%%%
 
-\begin{slide}
-\heading{Testing the barrier implementation}
+%% \begin{slide}
+%% \heading{Testing the barrier implementation}
 
-We can test the implementation using the technique of logging.  We arrange for
-each of |p| workers to repeatedly: log that it is trying to synchronise; call
-the |sync| operation; log that it has returned.
+%% We can test the implementation using the technique of logging.  We arrange for
+%% each of |p| workers to repeatedly: log that it is trying to synchronise; call
+%% the |sync| operation; log that it has returned.
 
-We then traverse the log, checking correctness.  At each point in the log, we
-keep track of two (disjoint) sets of threads: (1)~those threads that are
-trying to synchronise but cannot yet return, and (2)~those threads that may
-return.  When the final thread tries to synchronise, we update to allow all
-threads to return.  When a thread returns, we check that it is allowed to.
+%% We then traverse the log, checking correctness.  At each point in the log, we
+%% keep track of two (disjoint) sets of threads: (1)~those threads that are
+%% trying to synchronise but cannot yet return, and (2)~those threads that may
+%% return.  When the final thread tries to synchronise, we update to allow all
+%% threads to return.  When a thread returns, we check that it is allowed to.
 
-See the code on the course webpage.
-\end{slide}
+%% See the code on the course webpage.
+%% \end{slide}
 
 %%%%%
 

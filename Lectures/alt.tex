@@ -24,7 +24,7 @@
 \begin{slide}
 \heading{The need for alternation}
 
-At present, we can write processes that try to send  or receive on a
+At present, we can write threads that try to send  or receive on a
 \emph{single} channel.
 
 However, it's often useful to be able to try to send or receive on either of
@@ -36,7 +36,7 @@ two or more channels: the \SCALA{alt} construct does that for us.
 \begin{slide}
 \heading{\protect\SCALA{alt}: simple syntax}
 
-The process
+The thread
 %
 \begin{scala}
 alt( 
@@ -59,7 +59,7 @@ applies the relevant function |f|$_i$ to~$v$.
 \begin{slide}
 \heading{Example: a simple tagger}
 
-The following process repeatedly inputs from one of two input ports, tags the
+The following thread repeatedly inputs from one of two input ports, tags the
 value input, and outputs it.
 %
 \begin{scala}
@@ -85,7 +85,7 @@ Exercise: design a corresponding de-tagger.
 It's sometimes useful to specify that a particular inport should be considered
 only if some condition, or \emph{guard}, is true.
 
-In the  process
+In the  thread
 %
 \begin{scala}
 alt( guard£$_1$£ && inport£$_1$£ =?=> {f£$_1$£}
@@ -329,7 +329,7 @@ The syntax
 \begin{scala}
 thread(name){ <code> }
 \end{scala}
-Creates a process with name \SCALA{name}.
+Creates a thread with name \SCALA{name}.
 \end{selfnote}
 
 %%%%%
@@ -544,7 +544,7 @@ deadlocks.
 \begin{itemize}
 \item Make one philosopher right-handed, rather than all being left-handed; 
 
-\item Using a butler process, that allows at most $N-1$ philosophers to sit at
+\item Using a butler thread, that allows at most $N-1$ philosophers to sit at
 a time;
 
 \item Using timeouts: if a philosopher fails to get a fork within a reasonable
@@ -600,7 +600,7 @@ Note how this can output to \SCALA{out1} and \SCALA{out2} in either order.
 
 Inports and outports can be mixed within an \SCALA{alt}.
 
-The following process copies data from |in| to |out|, and can hold up to two
+The following thread copies data from |in| to |out|, and can hold up to two
 pieces of data at a time: it is a two-place buffer.
 %
 \begin{scala}  

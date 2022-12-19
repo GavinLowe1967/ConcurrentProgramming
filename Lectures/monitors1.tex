@@ -42,7 +42,7 @@ object Race2{
 \begin{slide}
 \heading{Mutual exclusion}
 
-The program on the previous slide allowed the two processes \SCALA{p} and
+The program on the previous slide allowed the two threads \SCALA{p} and
 \SCALA{q} to simultaneously access the variable \SCALA{Counter.x}, via the
 \SCALA{inc} and \SCALA{dec} operations.
 
@@ -67,16 +67,16 @@ lock on the monitor.  The thread releases the lock when it exits the monitor.
 
 %%%%%
 
-\begin{slide}
-\heading{Signalling}
+%% \begin{slide}
+%% \heading{Signalling}
 
-In addition, a monitor sometimes requires a thread to wait until it receives a
-signal from another thread.  
+%% In addition, a monitor sometimes requires a thread to wait until it receives a
+%% signal from another thread.  
 
-For example, consider a partial queue.  If a thread attempting to dequeue
-finds that the queue is empty, it should wait.  When an enqueue operation
-makes the queue non-empty, it can signal to the waiting thread.
-\end{slide}
+%% For example, consider a partial queue.  If a thread attempting to dequeue
+%% finds that the queue is empty, it should wait.  When an enqueue operation
+%% makes the queue non-empty, it can signal to the waiting thread.
+%% \end{slide}
 
 %%%%%
 

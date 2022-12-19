@@ -63,7 +63,7 @@ to the controller, but that's not the case here.)
 The controller will close the |toWorkers| channel to indicate that there are
 no remaining tasks.
 
-Each  worker process will repeatedly receive and process tasks, until the
+Each  worker thread will repeatedly receive and process tasks, until the
 |toWorkers|  channels is closed.  
 %
 \begin{scala}
@@ -91,7 +91,7 @@ Implementing this using a single controller thread is tricky, because that
 thread needs to deal with communications on two channels. 
 
 But the issues of distributing the tasks and receiving the results are
-independent.  So let's split them between two parallel processes!  
+independent.  So let's split them between two parallel threads!  
 
 Also, this might also give better performance, if the controller acts as a
 bottleneck.

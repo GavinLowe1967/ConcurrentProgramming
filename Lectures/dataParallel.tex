@@ -79,7 +79,7 @@ myA(end) = receiveUp?()
 \end{scala}
 %
 However, the two threads now share references to this array, so updates made
-by one thread will have an effect on the other thread --- a race condition!
+by one thread will have an effect on the other thread --- a race!
 
 The solution is either for the first thread to re-initialise
 \SCALA{myA(start)}, e.g., by \SCALA{myA(start) = new Array[Int](N)}, or to

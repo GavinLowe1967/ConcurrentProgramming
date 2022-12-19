@@ -93,7 +93,7 @@ implemented.
 \begin{scala}
   private class BagOfTasks{
     ...
-    /** A server process, that distributes tasks. */
+    /** A server thread, that distributes tasks. */
     private def server = thread{
       require(n%nTasks == 0); val delta = (b-a)/n; val taskSize = n/nTasks
       val taskRange = (b-a)/nTasks; var left = a                  

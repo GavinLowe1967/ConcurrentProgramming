@@ -152,7 +152,7 @@ Threads performing a |dequeue| should do something like
 \begin{slide}
 \heading{Encapsulating a server}
 
-We will implement the concurrent queue by encapsulating a server process.
+We will implement the concurrent queue by encapsulating a server thread.
 But we could also implement the queue using one of the techniques we'll see
 later in the course.
 
@@ -372,7 +372,7 @@ channel communications.  This order is compatible with the order of the
 invocations calls and returns.
 
 We will always use synchronous channels when implementing a concurrent
-datatype using a server process.   
+datatype using a server thread.   
 \end{slide}
 
 

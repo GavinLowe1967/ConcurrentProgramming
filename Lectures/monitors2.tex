@@ -82,9 +82,9 @@ Even if the code did work, it wouldn't be ideal.
 %
 % \begin{itemize}
 % \item
-The busy-waiting loop means both processes are using computational resources
+The busy-waiting loop means both threads are using computational resources
 unnecesarily.  This mechanism won't scale well, since if there are many
-processes, they will be competing for access to the (limited) processors, and
+threads, they will be competing for access to the (limited) processors, and
 also competing for use of the memory bus.
 
 \emph{Do not use busy waiting.}
@@ -139,12 +139,12 @@ class Slot[T]{
 \begin{slide}
 \heading{{\scalashape wait} and {\scalashape notify}}
 
-When a process executes \SCALA{wait()}, it is suspended and gives up
+When a thread executes \SCALA{wait()}, it is suspended and gives up
 the lock.  If waits until another thread
 in the same monitor executes \SCALA{notify()}, at which point it becomes
 \emph{ready} to run.  
 
-However, it cannot run until it obtains the lock on the monitor: the process
+However, it cannot run until it obtains the lock on the monitor: the thread
 that performed the \SCALA{notify()} must release the lock; and the awakened
 thread has to compete with other threads to obtain the lock.
 
@@ -203,7 +203,7 @@ Also, the implementation of |wait| is buggy.  Sometimes a thread doing a
 \begin{slide}
 \heading{{\scalashape wait} and {\scalashape notify}}
 
-Normally, a process performs a \SCALA{wait} because some condition~\SCALA{cond}
+Normally, a thread performs a \SCALA{wait} because some condition~\SCALA{cond}
 is false, and it needs to wait for~\SCALA{cond} to become true.  
 
 Normal practice is for another thread to perform a |notify| only when the
@@ -303,7 +303,7 @@ class Slot2[T]{
 
   def get : T = synchronized{
     while(!filled) wait()
-    filled = false; notifyAll(); value
+    filled = false; val result = value; notifyAll(); result
   }
 }
 \end{scala}
@@ -330,8 +330,8 @@ this effect in a later chapter.
 \heading{Signal-and-continue versus signal-and-wait}
 
 Note that Scala (like Java) uses \emph{signal-and-continue} semantics: when a
-process signals, it continues to hold the lock on the monitor; the
-awakened process must wait to get the lock.  That means that we could have
+thread signals, it continues to hold the lock on the monitor; the
+awakened thread must wait to get the lock.  That means that we could have
 written |get| as 
 %
 \begin{scala}
@@ -344,7 +344,7 @@ written |get| as
 \end{scala}
 
 By contrasts, some systems use \emph{signal-and-wait} semantics, where the
-process that signals also gives up the lock; the awakened process runs.
+thread that signals also gives up the lock; the awakened thread runs.
 \end{slide}
 
 %%%%%
@@ -379,30 +379,32 @@ process that signals also gives up the lock; the awakened process runs.
 \begin{slide}
 \heading{Java Memory Model}
 
-Recall that the original version of the slot has some  subtle problems caused
-by the Java Memory Model.  The use of |wait| and |notify| avoids
-these. 
+Recall that the original version of the slot has some subtle problems caused
+by the Java Memory Model.  The use of |wait| and |notify| avoids these.
 
 When a thread exits a |synchronized| block (either at the end of a
-procedure, or be performing a \SCALA{wait}), it \emph{publishes} the
+procedure, or by performing a \SCALA{wait}), it \emph{publishes} the
 values in the cache, making them available to other threads.
 
 When a thread enters a |synchronized| block (either initially, or after
 receiving a \SCALA{notify}), it \emph{subscribes} to all variables
 published by other threads on the same monitor.
 
-Compiler optimisations must respect this
-semantics.
-%% \footnote{\url{http://www.cs.umd.edu/~pugh/java/memoryModel/jsr-133-faq.html}}
+Compiler optimisations must respect this semantics.
 
-\vfill
+This means that if you are using |synchronized| blocks correctly to protect
+against data races, you do not need to worry about the Java Memory Model. 
+
+
+%% \footnote{\url{http://www.cs.umd.edu/~pugh/java/memoryModel/jsr-133-faq.html}}
+%\vfill
 \end{slide}
 
 
 %%%%%
 
 \begin{slide}
-\heading{{\scalashape wait} and {\scalashape notify}}
+\heading{{\scalashape wait(t)}}
 
 \SCALA{wait(t)} acts like \SCALA{wait()}, except it will wake up after
 \SCALA{t}ms, if it hasn't been woken by a \SCALA{notify} in the meantime.
@@ -419,6 +421,6 @@ This can be used to implement timeouts.
 %% threads will be awoken, obtain the lock, check the guard on their wait loop,
 %% and normally all but one will immediately do another \SCALA{wait}.
 
-All calls to each of |wait|, |notify| and |notifyAll| must be from inside a
-|synchronized| block.
+%% All calls to each of |wait|, |notify| and |notifyAll| must be from inside a
+%% |synchronized| block.
 \end{slide}
