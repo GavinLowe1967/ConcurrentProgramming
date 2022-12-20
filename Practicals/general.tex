@@ -1,0 +1,95 @@
+\documentclass[12pt,a4paper]{article}
+
+%\parindent=0.0cm
+%\usepackage{epsf}
+%\usepackage{graphicx}
+%\usepackage{csp-cm}
+
+\sloppy
+
+\usepackage{url}
+\begin{document}
+\begin{center}
+\Large\bf
+Concurrent Programming, Hilary Term 2023 \\
+General advice on practicals
+\end{center}
+
+
+Practicals are held in Weeks 2, 3, 4, 6, 7 and 8.  You should sign up
+for practicals.
+
+There are four practicals for this course:
+%
+\begin{itemize}
+\item Practical 1: Sorting Networks; deadline Week 3 practicals.
+
+\item Practical 2: Dining Philosophers; deadline Week 4 practicals.
+
+\item Practical 3: Concurrent Depth-First Search; deadline Week 7
+practicals.
+
+\item Practical 4: Monitors and Semaphores; deadline Week~8
+practicals.
+\end{itemize}
+%
+Each practical must be marked during the practical sessions, by the deadline
+mentioned.
+
+Your report for each practical should be in the form of a well-commented
+program, using the SCL library, and including answers to any specific
+questions.  You are encouraged to ask the demonstrators for feedback about
+each practical report.
+
+All the practicals have parts marked as {\em optional}.  It is
+possible to get a score of $S$ without doing these parts; however,
+these parts are necessary for you to score $S+$.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection*{Practical 0}
+
+This is an un-assessed informal practical, designed to get you up and running
+with Scala and SCL\@.  You are advised to complete this before the first
+practical session. 
+%
+\begin{enumerate}
+\item If you don't already have it, install Scala (version 2.13) from the web.
+  Scala is already installed on Department machines.
+
+\item Download the SCL library from the course webpage.
+
+\item Download an example program from the course webpage,
+  for example \texttt{Race.scala}. 
+
+\item Compile the program using \texttt{scalac} or \texttt{fsc}.  You will
+  need to include the SCL library (more precisely, the directory that contains
+  the \texttt{ox} directory) on your classpath.  For example, if the
+  \texttt{ox} directory is in \texttt{/home/alice/CP}, then the following
+  should work: 
+  \begin{quote}\tt
+  fsc -classpath .:/home/alice/CP Race.scala
+  \end{quote}
+
+\item Run the program using \texttt{scala}.  You again need to include the SCL
+  library in your classpath, for example
+  \begin{quote}\tt  
+  scala -classpath .:/home/alice/CP Race
+  \end{quote}
+
+\item (Optional.)  It might save time in the long term to automatically
+  include the SCL files in your classpath.  For example, if you use bash, add
+  the line \texttt{export CLASSPATH=/home/alice/CP:\$CLASSPATH} to your
+  \texttt{.bashrc} file, then type {\tt source .bashrc} at the shell prompt.
+  You should then be able to compile and run programs without the
+  ``\texttt{-classpath}'' option.
+\end{enumerate}
+
+The course webpage contains links to Scala and SCL documentation.
+
+\begin{flushright}
+Gavin Lowe
+\end{flushright}
+
+
+\end{document}

@@ -41,8 +41,8 @@ A lock has two principle operations:
 
 We will see other uses of locks in the next chapter. 
 
-Most other languages provide an implementation of locks with a similar
-interface. 
+Most other programming languages provide an implementation of locks with a
+similar interface.
 \end{slide}
 
 %%%%%
@@ -129,8 +129,8 @@ def g(y: Int) = lock.mutex{ ... }
 \begin{slide}
 \heading{Example: using a monitor to protect an array}
 
-Suppose we want to protect an array~|a| against race conditions.  We
-can wrap it inside a monitor as follows.
+Suppose we want to protect an array~|a| against memory races.  We can wrap it
+inside a monitor as follows.
 %
 \begin{scala}
 class ArrayWrapper[T](a: Array[T]){

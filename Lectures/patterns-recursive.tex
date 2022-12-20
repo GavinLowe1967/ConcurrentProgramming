@@ -148,29 +148,29 @@ The bag is likely to prove a bottleneck.  Possible enhancements are:
 
 %%%%%
 
-\begin{slide}
-\heading{Parallel collections}
+%% \begin{slide}
+%% \heading{Parallel collections}
 
-Scala's parallel collections
-API\footnote{%
-\url{https://docs.scala-lang.org/overviews/parallel-collections/overview.html}.}
-aims to support parallelism in a way that means the programmer doesn't have to
-think too much about parallelism.  Example:
-%
-\begin{scala}
-scala> (1 to 10000).toList.par.sum
-res0: Int = 50005000
-\end{scala}
+%% Scala's parallel collections
+%% API\footnote{%
+%% \url{https://docs.scala-lang.org/overviews/parallel-collections/overview.html}.}
+%% aims to support parallelism in a way that means the programmer doesn't have to
+%% think too much about parallelism.  Example:
+%% %
+%% \begin{scala}
+%% scala> (1 to 10000).toList.par.sum
+%% res0: Int = 50005000
+%% \end{scala}
 
-Internally, recursive parallelism is used.  To sum a long list, it can be
-split into two parts; each is summed, in parallel (possibly leading to further
-splits); then the subresults are summed. 
+%% Internally, recursive parallelism is used.  To sum a long list, it can be
+%% split into two parts; each is summed, in parallel (possibly leading to further
+%% splits); then the subresults are summed. 
 
-Of course, careless use can create race conditions.
-\begin{scala}
-  var sum = 0
-  (1 to 10000).toList.par.foreach(sum += _)
-\end{scala}
+%% Of course, careless use can create race conditions.
+%% \begin{scala}
+%%   var sum = 0
+%%   (1 to 10000).toList.par.foreach(sum += _)
+%% \end{scala}
 
-\vfill
-\end{slide}
+%% \vfill
+%% \end{slide}

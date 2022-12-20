@@ -256,7 +256,7 @@ class Future[A](exp: => A){
 \heading{Lock-free programming}
 
 In this course, we've taken the view that shared variables should be accessed
-without race conditions.  We've achieved this by different mechanisms:
+without memory races.  We've achieved this by different mechanisms:
 %
 \begin{itemize}
 \item By using pure message passing, with different threads having disjoint
@@ -278,9 +278,9 @@ In a message-passing system, certain components, particularly servers, can be
 a bottleneck.  Likewise, any object that uses locking can be a bottleneck.
 These bottlenecks prevent scaling of performance.
 
-An alternative approach is not to use locking, and, instead, to allow race
-conditions in programs.  This is the approach taken in the Concurrent
-Algorithms and Data Structures course.
+An alternative approach is not to use locking, and, instead, to allow races in
+programs.  This is the approach taken in the Concurrent Algorithms and Data
+Structures course.
 
 However, this approach raises problems.  We've previously seen problems
 concerning cache consistency and compiler optimisations.  But even without

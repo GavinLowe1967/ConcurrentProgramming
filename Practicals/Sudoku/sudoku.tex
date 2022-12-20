@@ -1,0 +1,108 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage{scalalistings, questions}
+\usepackage{graphicx}
+
+\def\color#1{}
+
+\begin{document}
+\begin{center}
+\LARGE\bf Concurrent Programming \\
+Practical 3: Concurrent Depth-First Search
+\end{center}
+
+In this practical we will develop a concurrent program for depth-first
+search.  The course web site includes a program that makes use of this
+depth-first search in order to solve sudoku problems.
+
+I recommended that you study the material in the lecture notes related to
+breadth-first search before starting this practical.
+
+\textbf{Deadline: } practical sessions in Week 7.
+
+As in lectures, we will deal with graphs with the following interface.
+\begin{scala}
+/** A trait representing an unlabelled graph with nodes of type N. */
+trait Graph[N]{
+  /** The successors of node n. */
+  def succs(n: N): List[N]
+}
+\end{scala}
+%
+We will implement a depth-first search matching the following interface.
+%
+\begin{scala}
+/** Abstract class representing graph search problems. */
+abstract class GraphSearch[N](g: Graph[N]){
+  /** Perform a depth-first search in g, starting from start, for a node that
+    * satisfies isTarget. */
+  def apply(start: N, isTarget: N => Boolean): Option[N]
+}
+\end{scala}
+
+We will implement a tree search (as opposed to a graph search): we will not
+keep track of nodes of the graph previously seen.  In particular, the sudoku
+search graph is, in fact, a tree, so no node will be encountered twice via
+different routes.  Figure~\ref{fig:dfs} contains code for a sequential
+depth-first tree search.
+%
+\begin{figure}
+\begin{scala}
+/** Sequential depth-first search of graph g. */
+class SeqGraphSearch[N](g: Graph[N]) extends GraphSearch[N](g){
+  /** Perform a depth-first search in g, starting from start, for a node that
+    * satisfies isTarget.  This performs a tree search, not storing the set of
+    * nodes seen previously. */
+  def apply(start: N, isTarget: N => Boolean): Option[N] = {
+    // Stack storing nodes
+    val stack = new Stack[N](); stack.push(start)
+
+    while(stack.nonEmpty){
+      val n = stack.pop
+      for(n1 <- g.succs(n)){
+        if(isTarget(n1)) return Some(n1) else stack.push(n1)
+      }
+    }
+    None
+  }
+}
+\end{scala}
+\caption{The sequential depth-first tree search.}
+\label{fig:dfs}
+\end{figure}
+
+Your task is to implement a concurrent version of this search.  In particular,
+you will need to replace the stack with a suitable concurrent stack.  
+
+You will need to think carefully about termination.  You may, if you
+want, assume that the graph contains at least one reachable node that
+satisfies |isTarget|.  \textbf{Optional:} do not make this assumption,
+so your code will need to deal with the case where no solution is
+found. 
+
+You should run your search on some sudoku problems.
+
+The course website contains a zip file containing the following.
+%
+\begin{itemize}
+\item \texttt{GraphSearch.scala}, which contains all the above code.
+
+\item \texttt{Partial.scala} and \texttt{Sudoku.scala} which represents sudoku
+problems as graphs, and solves them; you do not need to study this code in
+much detail.
+
+\item \texttt{ConcGraphSearch.scala} which provides the outline of the search
+you have to implement.
+
+\item Various files with suffix \texttt{.sud}, which represent sudoku
+problems; in particular, \texttt{impossible.sud} represents a problem with no
+solution. 
+
+% And a makefile
+\end{itemize}
+
+Your report should be in the form of well commented code, including a brief
+description of any design decisions. 
+
+\end{document}
+
+

@@ -1,0 +1,131 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage{scalalistings, questions}
+\usepackage{graphicx}
+
+\def\color#1{}
+\begin{document}
+\begin{center}
+\LARGE\bf Concurrent Programming \\
+Practical 2: Dining Philosophers
+\end{center}
+%\maketitle
+
+It is recommended that you read the material from the section of the
+coursenotes on the Dining Philosophers before you attempt this practical.  The
+code from the lectures is on the course website.
+
+The aim of the practical is to investigate some variants of the Dining
+Philosophers, which aim to avoid deadlocks.  You should implement and
+test two of the three variants below.  {\bf Optional:} implement all
+three.
+
+\textbf{Deadline:} Practical sessions in Week 4.
+
+Your report should be in the form of a well-commented program, together with
+a brief discussion of any design considerations and of your results.
+
+%%%%%
+
+\subsection*{Variant 1: a right-handed philosopher}
+
+In the standard version of the dining philosophers, all the philosophers are
+left-handed: they pick up their left fork first.  Implement a variant where
+one of the philosophers is right-handed, i.e.\ she picks up her right fork
+first. 
+
+%%%%%
+
+\subsection*{Variant 2: using a butler}
+
+Now consider a variant using an extra process, which represents a butler.  The
+butler makes sure that no more than four philosophers are ever simultaneously
+seated. 
+
+%%%%%
+
+\subsection*{Variant 3: using timeouts}
+
+Now consider a variant where, if a philosopher is unable to obtain her second
+fork, she puts down her first fork, and retries later.  
+In the Dining Philosophers example from lectures, all delays are a few hundred
+milliseconds, so the delay here should be of a similar order.
+
+In order to implement
+this idea, you will need to use the following function (in |OutPort[A]|).
+\begin{scala}
+  def sendWithin(millis: Long)(x: A): Boolean
+\end{scala}
+This tries to send |x| for up to |millis| milliseconds, but if the message
+isn't received within that time, then it times out and returns.  The command
+returns a boolean, indicating whether |x| was successfully received.  
+ 
+
+
+%  def receiveWithin(millis: Long): Option[A] =
+
+
+%% In order to implement this idea, you will need to use a |DeadlineManyOne|
+%% channel.  The command
+%% \begin{scala}
+%%   c = new channel.DeadlineManyOne[T]
+%% \end{scala}
+%% creates such a channel.  It is like a |ManyOne[T]| channel, except that it has
+%% an additional command
+%% \begin{scala}
+%%   c.writeBefore(nsWait)(value)
+%% \end{scala}
+%% which tries to send |value| for up to |nsWait| nanoseconds, but if the message
+%% isn't received within that time, then it times out and returns.
+%% The command returns a boolean, indicating whether |value| was successfully
+%% received. 
+
+%% A |DeadlineManyOne| channel may \emph{not} be used in an |alt|.  To avoid
+%% using an |alt|, you can provide each fork with a single channel, from which it
+%% can receive a message from either of its philosophers (hence the channel has
+%% to be many-one).   
+%% %
+%% Also, a |DeadlineManyOne[T]| channel does not extend the |?[T]| and |![T]|
+%% traits (because those traits represent ports that can be used in an |alt|).
+%% This means that you can't parameterise processes using those traits.
+
+
+
+
+
+%% You might want to
+%% investigate the |writeBefore| operation on channels: see the API
+%% documentation. 
+
+If we reach a state where all philosophers are blocked, it's possible
+that they all put down their forks at the same time, and then all
+retry at the same time, leading to them being blocked again.  How can
+we avoid this (with high probability)?
+
+%% {\bf Hint:} In order to respect the restrictions on the use of \SCALA{alt}s,
+%% you will need to change the structure of the program somewhat: implementing
+%% the timeout in the obvious way would mean that the OutPort end of each channel
+%% would be involved in an \SCALA{alt} in the philosopher, and the InPort end
+%% would be involved in an \SCALA{alt} in the fork.  A solution is to use ManyOne
+%% channels, so as to remove the \SCALA{alt} in the fork.
+
+%%%%%
+
+
+%% \subsection*{Reporting}
+
+%% Your report should be in the form of a well-commented program, together with
+%% a brief discussion of any design considerations and of your results.
+
+\end{document}
+
+
+
+
+
+
+
+
+
+
+
+
